@@ -581,6 +581,999 @@ class TestE2ECompleteWorkflow:
             assert finalized_data["rfq_id"] == rfq["rfq_id"]
 
 
+class TestE2EEmails:
+    """Test email classification endpoints with real HTTP requests."""
+    
+    def test_classify_email_quote_e2e(self, client: httpx.Client):
+        """Test classifying email as quote with real HTTP request."""
+        response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [
+                    {
+                        "subject": "RFQ for MAT-12345",
+                        "body": "Original RFQ email",
+                        "from_email": "procurement@company.com",
+                        "date": "2024-01-15T10:00:00Z"
+                    }
+                ],
+                "most_recent_reply": {
+                    "subject": "Re: RFQ for MAT-12345",
+                    "body": "Here is our quote: Price $1000 USD, Delivery: 4-6 weeks, Valid until March 2024",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "email_id" in data
+        assert "classification" in data
+        assert data["classification"] in ["quote", "clarification_request", "engineer_response"]
+        assert "confidence" in data
+        assert isinstance(data["confidence"], (int, float))
+        assert 0 <= data["confidence"] <= 1
+        assert "message" in data
+    
+    def test_classify_email_clarification_e2e(self, client: httpx.Client):
+        """Test classifying email as clarification with real HTTP request."""
+        response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Re: RFQ for MAT-12345",
+                    "body": "We have a question: What is the delivery address? Can you please clarify?",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "email_id" in data
+        assert "classification" in data
+        assert "confidence" in data
+        assert "message" in data
+    
+    def test_classify_email_validation_e2e(self, client: httpx.Client):
+        """Test validation errors with real server."""
+        response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                # Missing most_recent_reply
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        
+        assert response.status_code == 422
+    
+    def test_classify_email_response_structure_e2e(self, client: httpx.Client):
+        """Validate response structure with real HTTP request."""
+        response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Test",
+                    "body": "Test body",
+                    "from_email": "test@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        required_fields = ["email_id", "classification", "confidence", "message"]
+        for field in required_fields:
+            assert field in data, f"Missing field: {field}"
+
+
+class TestE2EEmailProcessing:
+    """Test email processing endpoints with real HTTP requests."""
+    
+    def test_process_clarification_e2e(self, client: httpx.Client):
+        """Test processing clarification with real HTTP request."""
+        # Classify
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Question",
+                    "body": "What is the delivery address for this order?",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        assert classify_response.status_code == 200
+        email_id = classify_response.json()["email_id"]
+        classification = classify_response.json()["classification"]
+        
+        # Process
+        if classification == "clarification_request":
+            process_response = client.post(
+                "/api/emails/process",
+                json={
+                    "email_id": email_id,
+                    "classification": classification
+                }
+            )
+            
+            assert process_response.status_code == 200
+            data = process_response.json()
+            
+            assert "email_id" in data
+            if "sub_classification" in data:
+                assert data["sub_classification"] in ["engineering", "procurement"]
+                assert "question" in data
+    
+    def test_process_quote_e2e(self, client: httpx.Client):
+        """Test processing quote with real HTTP request."""
+        # Classify
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Re: RFQ for MAT-12345",
+                    "body": "Price: $1500 USD, Delivery: 4-6 weeks",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        assert classify_response.status_code == 200
+        email_id = classify_response.json()["email_id"]
+        classification = classify_response.json()["classification"]
+        
+        # Process
+        process_response = client.post(
+            "/api/emails/process",
+            json={
+                "email_id": email_id,
+                "classification": classification
+            }
+        )
+        
+        if process_response.status_code == 200:
+            data = process_response.json()
+            assert "email_id" in data
+            assert "message" in data
+    
+    def test_process_email_not_found_e2e(self, client: httpx.Client):
+        """Test 404 with real server."""
+        response = client.post(
+            "/api/emails/process",
+            json={
+                "email_id": "EMAIL-NONEXISTENT",
+                "classification": "quote"
+            }
+        )
+        
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+    
+    def test_process_email_classification_mismatch_e2e(self, client: httpx.Client):
+        """Test 400 with real server."""
+        # Classify
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Quote",
+                    "body": "Price: $1000 USD",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        assert classify_response.status_code == 200
+        email_id = classify_response.json()["email_id"]
+        actual_classification = classify_response.json()["classification"]
+        
+        # Try with wrong classification
+        wrong_classification = "clarification_request" if actual_classification == "quote" else "quote"
+        response = client.post(
+            "/api/emails/process",
+            json={
+                "email_id": email_id,
+                "classification": wrong_classification
+            }
+        )
+        
+        assert response.status_code == 400
+        assert "mismatch" in response.json()["detail"].lower()
+
+
+class TestE2ESuggestResponse:
+    """Test suggest response endpoints with real HTTP requests."""
+    
+    def test_suggest_response_e2e(self, client: httpx.Client):
+        """Test response suggestion with real HTTP request."""
+        # Classify and process
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Question",
+                    "body": "What is the delivery address?",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        email_id = classify_response.json()["email_id"]
+        
+        process_response = client.post(
+            "/api/emails/process",
+            json={
+                "email_id": email_id,
+                "classification": "clarification_request"
+            }
+        )
+        
+        if process_response.status_code == 200:
+            data = process_response.json()
+            clarification_id = data.get("clarification_id")
+            
+            if clarification_id:
+                suggest_response = client.post(
+                    "/api/emails/suggest-response",
+                    json={
+                        "clarification_id": clarification_id,
+                        "email_id": email_id,
+                        "question": data.get("question", "What is the delivery address?")
+                    }
+                )
+                
+                assert suggest_response.status_code == 200
+                suggest_data = suggest_response.json()
+                assert "suggested_response" in suggest_data
+                assert "draft_subject" in suggest_data
+                assert isinstance(suggest_data["suggested_response"], str)
+                assert len(suggest_data["suggested_response"]) > 0
+    
+    def test_suggest_response_structure_e2e(self, client: httpx.Client):
+        """Validate response structure with real HTTP request."""
+        # Create clarification
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Question",
+                    "body": "What are the payment terms?",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        email_id = classify_response.json()["email_id"]
+        
+        process_response = client.post(
+            "/api/emails/process",
+            json={
+                "email_id": email_id,
+                "classification": "clarification_request"
+            }
+        )
+        
+        if process_response.status_code == 200:
+            data = process_response.json()
+            clarification_id = data.get("clarification_id")
+            
+            if clarification_id:
+                suggest_response = client.post(
+                    "/api/emails/suggest-response",
+                    json={
+                        "clarification_id": clarification_id,
+                        "email_id": email_id,
+                        "question": data.get("question", "What are the payment terms?")
+                    }
+                )
+                
+                if suggest_response.status_code == 200:
+                    suggest_data = suggest_response.json()
+                    required_fields = ["suggested_response", "draft_subject"]
+                    for field in required_fields:
+                        assert field in suggest_data, f"Missing field: {field}"
+
+
+class TestE2EForwardToEngineering:
+    """Test forward to engineering endpoints with real HTTP requests."""
+    
+    def test_forward_to_engineering_e2e(self, client: httpx.Client):
+        """Test forwarding with real HTTP request."""
+        # Classify and process
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Question",
+                    "body": "Can we use alternative material specification?",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        email_id = classify_response.json()["email_id"]
+        
+        process_response = client.post(
+            "/api/emails/process",
+            json={
+                "email_id": email_id,
+                "classification": "clarification_request"
+            }
+        )
+        
+        if process_response.status_code == 200:
+            data = process_response.json()
+            clarification_id = data.get("clarification_id")
+            
+            if clarification_id:
+                forward_response = client.post(
+                    "/api/emails/forward-to-engineering",
+                    json={
+                        "email_id": email_id,
+                        "clarification_id": clarification_id
+                    }
+                )
+                
+                assert forward_response.status_code == 200
+                forward_data = forward_response.json()
+                assert forward_data["status"] == "sent_to_engineering"
+                assert "message" in forward_data
+    
+    def test_forward_to_engineering_status_e2e(self, client: httpx.Client):
+        """Verify status updates with real HTTP request."""
+        # Classify and process
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Question",
+                    "body": "What material grade is required?",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        email_id = classify_response.json()["email_id"]
+        
+        process_response = client.post(
+            "/api/emails/process",
+            json={
+                "email_id": email_id,
+                "classification": "clarification_request"
+            }
+        )
+        
+        if process_response.status_code == 200:
+            data = process_response.json()
+            clarification_id = data.get("clarification_id")
+            
+            if clarification_id:
+                forward_response = client.post(
+                    "/api/emails/forward-to-engineering",
+                    json={
+                        "email_id": email_id,
+                        "clarification_id": clarification_id
+                    }
+                )
+                
+                assert forward_response.status_code == 200
+                assert forward_response.json()["status"] == "sent_to_engineering"
+
+
+class TestE2EEngineerResponse:
+    """Test engineer response endpoints with real HTTP requests."""
+    
+    def test_process_engineer_response_e2e(self, client: httpx.Client):
+        """Test engineer response processing with real HTTP request."""
+        # Classify
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Engineer Response",
+                    "body": "Technical response from engineer",
+                    "from_email": "engineer@company.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        email_id = classify_response.json()["email_id"]
+        
+        # Process engineer response
+        response = client.post(
+            "/api/emails/process-engineer-response",
+            json={
+                "email_id": email_id,
+                "engineer_response": {
+                    "body": "Yes, alternative material X can be used with these specifications...",
+                    "from": "engineer@company.com"
+                }
+            }
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "draft_response" in data
+        assert "subject" in data["draft_response"]
+        assert "body" in data["draft_response"]
+        assert "to" in data["draft_response"]
+    
+    def test_process_engineer_response_draft_e2e(self, client: httpx.Client):
+        """Validate draft response with real HTTP request."""
+        # Classify
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Engineering Review",
+                    "body": "Review completed",
+                    "from_email": "engineer@company.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        email_id = classify_response.json()["email_id"]
+        
+        # Process
+        response = client.post(
+            "/api/emails/process-engineer-response",
+            json={
+                "email_id": email_id,
+                "engineer_response": {
+                    "body": "Technical approval granted",
+                    "from": "engineer@company.com"
+                }
+            }
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            draft = data["draft_response"]
+            required_fields = ["subject", "body", "to"]
+            for field in required_fields:
+                assert field in draft, f"Missing field: {field}"
+            assert isinstance(draft["subject"], str)
+            assert isinstance(draft["body"], str)
+            assert isinstance(draft["to"], str)
+            assert "@" in draft["to"]  # Valid email format
+
+
+class TestE2EQuoteExtraction:
+    """Test quote extraction endpoints with real HTTP requests."""
+    
+    def test_extract_quote_e2e(self, client: httpx.Client):
+        """Test quote extraction with real HTTP request."""
+        # Classify
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Re: RFQ for MAT-12345",
+                    "body": "Price: $1500 USD, Delivery: 4-6 weeks",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        email_id = classify_response.json()["email_id"]
+        
+        # Extract quote
+        extract_response = client.post(
+            "/api/emails/extract-quote",
+            json={
+                "email_id": email_id,
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001",
+                "email_body": "Price: $1500 USD, Delivery: 4-6 weeks, Valid for 30 days"
+            }
+        )
+        
+        assert extract_response.status_code == 200
+        data = extract_response.json()
+        
+        assert "quote_id" in data
+        assert "extracted_details" in data
+        assert "status" in data
+        assert data["status"] == "received"
+        assert isinstance(data["extracted_details"], dict)
+    
+    def test_extract_quote_details_e2e(self, client: httpx.Client):
+        """Validate extracted details with real HTTP request."""
+        # Classify
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Quote",
+                    "body": "Our quotation: $2000 USD",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        email_id = classify_response.json()["email_id"]
+        
+        # Extract
+        extract_response = client.post(
+            "/api/emails/extract-quote",
+            json={
+                "email_id": email_id,
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001",
+                "email_body": "Our quotation: $2000 USD, delivery in 5 weeks"
+            }
+        )
+        
+        assert extract_response.status_code == 200
+        data = extract_response.json()
+        assert "extracted_details" in data
+        details = data["extracted_details"]
+        assert isinstance(details, dict)
+    
+    def test_extract_quote_multiple_e2e(self, client: httpx.Client):
+        """Test multiple quote extractions with real HTTP request."""
+        # Extract multiple quotes
+        quote_ids = []
+        for i in range(2):
+            classify_response = client.post(
+                "/api/emails/classify",
+                json={
+                    "email_chain": [],
+                    "most_recent_reply": {
+                        "subject": f"Quote {i+1}",
+                        "body": f"Price: ${1000 + i*100}",
+                        "from_email": f"supplier{i+1}@example.com",
+                        "date": "2024-01-16T10:00:00Z"
+                    },
+                    "rfq_id": "RFQ-001",
+                    "supplier_id": f"SUP-00{i+1}"
+                }
+            )
+            email_id = classify_response.json()["email_id"]
+            
+            extract_response = client.post(
+                "/api/emails/extract-quote",
+                json={
+                    "email_id": email_id,
+                    "rfq_id": "RFQ-001",
+                    "supplier_id": f"SUP-00{i+1}",
+                    "email_body": f"Price: ${1000 + i*100} USD"
+                }
+            )
+            assert extract_response.status_code == 200
+            quote_ids.append(extract_response.json()["quote_id"])
+        
+        # Verify quotes were extracted
+        assert len(quote_ids) == 2
+        assert len(set(quote_ids)) == 2  # All unique
+
+
+class TestE2EQuotes:
+    """Test quotes retrieval endpoints with real HTTP requests."""
+    
+    def test_get_quotes_by_rfq_e2e(self, client: httpx.Client):
+        """Test quote retrieval with real HTTP request."""
+        # Extract a quote first
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Quote 1",
+                    "body": "Price: $1000",
+                    "from_email": "supplier1@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        email_id = classify_response.json()["email_id"]
+        
+        client.post(
+            "/api/emails/extract-quote",
+            json={
+                "email_id": email_id,
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001",
+                "email_body": "Price: $1000 USD"
+            }
+        )
+        
+        # Get quotes
+        response = client.get("/api/quotes/RFQ-001")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "quotes" in data
+        assert isinstance(data["quotes"], list)
+    
+    def test_get_quotes_empty_e2e(self, client: httpx.Client):
+        """Test empty quote list with real HTTP request."""
+        response = client.get("/api/quotes/RFQ-NONEXISTENT")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "quotes" in data
+        assert len(data["quotes"]) == 0
+    
+    def test_get_quotes_structure_e2e(self, client: httpx.Client):
+        """Validate quote list structure with real HTTP request."""
+        # Extract a quote
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Quote",
+                    "body": "Price: $1000",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        email_id = classify_response.json()["email_id"]
+        
+        client.post(
+            "/api/emails/extract-quote",
+            json={
+                "email_id": email_id,
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001",
+                "email_body": "Price: $1000 USD"
+            }
+        )
+        
+        # Get quotes
+        response = client.get("/api/quotes/RFQ-001")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "quotes" in data
+        
+        if len(data["quotes"]) > 0:
+            quote = data["quotes"][0]
+            required_fields = ["quote_id", "supplier_name", "quote_date", "status"]
+            for field in required_fields:
+                assert field in quote, f"Missing field: {field}"
+
+
+class TestE2ECompleteEmailWorkflows:
+    """Test complete email workflows with real HTTP requests."""
+    
+    def test_complete_quote_workflow_e2e(self, client: httpx.Client):
+        """End-to-end quote workflow with real HTTP requests."""
+        # Step 1: Classify
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Re: RFQ for MAT-12345",
+                    "body": "Price: $1500 USD, Delivery: 4-6 weeks",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        assert classify_response.status_code == 200
+        email_id = classify_response.json()["email_id"]
+        
+        # Step 2: Extract quote
+        extract_response = client.post(
+            "/api/emails/extract-quote",
+            json={
+                "email_id": email_id,
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001",
+                "email_body": "Price: $1500 USD, Delivery: 4-6 weeks, Valid for 30 days"
+            }
+        )
+        assert extract_response.status_code == 200
+        quote_id = extract_response.json()["quote_id"]
+        
+        # Step 3: Retrieve quotes
+        quotes_response = client.get("/api/quotes/RFQ-001")
+        assert quotes_response.status_code == 200
+        quotes = quotes_response.json()["quotes"]
+        
+        # Verify quote is in the list
+        quote_ids = [q["quote_id"] for q in quotes]
+        assert quote_id in quote_ids
+    
+    def test_complete_clarification_workflow_e2e(self, client: httpx.Client):
+        """End-to-end clarification workflow with real HTTP requests."""
+        # Step 1: Classify
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Question",
+                    "body": "What is the delivery address?",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        assert classify_response.status_code == 200
+        email_id = classify_response.json()["email_id"]
+        classification = classify_response.json()["classification"]
+        
+        # Step 2: Process
+        if classification == "clarification_request":
+            process_response = client.post(
+                "/api/emails/process",
+                json={
+                    "email_id": email_id,
+                    "classification": classification
+                }
+            )
+            assert process_response.status_code == 200
+            data = process_response.json()
+            clarification_id = data.get("clarification_id")
+            
+            # Step 3: Suggest response (if procurement)
+            if data.get("sub_classification") == "procurement" and clarification_id:
+                suggest_response = client.post(
+                    "/api/emails/suggest-response",
+                    json={
+                        "clarification_id": clarification_id,
+                        "email_id": email_id,
+                        "question": data.get("question", "What is the delivery address?")
+                    }
+                )
+                assert suggest_response.status_code == 200
+                assert "suggested_response" in suggest_response.json()
+            
+            # Step 4: Forward to engineering (if engineering)
+            if data.get("sub_classification") == "engineering" and clarification_id:
+                forward_response = client.post(
+                    "/api/emails/forward-to-engineering",
+                    json={
+                        "email_id": email_id,
+                        "clarification_id": clarification_id
+                    }
+                )
+                assert forward_response.status_code == 200
+                assert forward_response.json()["status"] == "sent_to_engineering"
+    
+    def test_complete_engineering_workflow_e2e(self, client: httpx.Client):
+        """End-to-end engineering workflow with real HTTP requests."""
+        # Step 1: Classify clarification
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Question",
+                    "body": "Can we use alternative material?",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        assert classify_response.status_code == 200
+        email_id = classify_response.json()["email_id"]
+        
+        # Step 2: Process clarification
+        process_response = client.post(
+            "/api/emails/process",
+            json={
+                "email_id": email_id,
+                "classification": "clarification_request"
+            }
+        )
+        assert process_response.status_code == 200
+        
+        # Step 3: Classify engineer response
+        engineer_classify = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Engineering Review",
+                    "body": "Technical review completed",
+                    "from_email": "engineer@company.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        engineer_email_id = engineer_classify.json()["email_id"]
+        
+        # Step 4: Process engineer response
+        engineer_response = client.post(
+            "/api/emails/process-engineer-response",
+            json={
+                "email_id": engineer_email_id,
+                "engineer_response": {
+                    "body": "Alternative material approved with specifications...",
+                    "from": "engineer@company.com"
+                }
+            }
+        )
+        assert engineer_response.status_code == 200
+        assert "draft_response" in engineer_response.json()
+
+
+class TestE2EEmailErrorHandling:
+    """Test email error handling with real HTTP requests."""
+    
+    def test_email_404_errors_e2e(self, client: httpx.Client):
+        """Test all 404 error cases with real server."""
+        # Test process email not found
+        response = client.post(
+            "/api/emails/process",
+            json={
+                "email_id": "EMAIL-NONEXISTENT",
+                "classification": "quote"
+            }
+        )
+        assert response.status_code == 404
+        
+        # Test suggest response not found
+        response = client.post(
+            "/api/emails/suggest-response",
+            json={
+                "clarification_id": "CLAR-NONEXISTENT",
+                "email_id": "EMAIL-001",
+                "question": "Test"
+            }
+        )
+        assert response.status_code == 404
+        
+        # Test forward to engineering not found
+        response = client.post(
+            "/api/emails/forward-to-engineering",
+            json={
+                "email_id": "EMAIL-NONEXISTENT",
+                "clarification_id": "CLAR-NONEXISTENT"
+            }
+        )
+        assert response.status_code == 404
+        
+        # Test process engineer response not found
+        response = client.post(
+            "/api/emails/process-engineer-response",
+            json={
+                "email_id": "EMAIL-NONEXISTENT",
+                "engineer_response": {
+                    "body": "Test",
+                    "from": "engineer@company.com"
+                }
+            }
+        )
+        assert response.status_code == 404
+    
+    def test_email_422_errors_e2e(self, client: httpx.Client):
+        """Test all validation errors with real server."""
+        # Test classify with missing fields
+        response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                # Missing most_recent_reply
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        assert response.status_code == 422
+        
+        # Test process with missing fields
+        response = client.post(
+            "/api/emails/process",
+            json={
+                # Missing email_id
+                "classification": "quote"
+            }
+        )
+        assert response.status_code == 422
+        
+        # Test extract quote with missing fields
+        response = client.post(
+            "/api/emails/extract-quote",
+            json={
+                "email_id": "EMAIL-001",
+                # Missing rfq_id, supplier_id, email_body
+            }
+        )
+        assert response.status_code == 422
+    
+    def test_email_400_errors_e2e(self, client: httpx.Client):
+        """Test all 400 error cases with real server."""
+        # Classify an email
+        classify_response = client.post(
+            "/api/emails/classify",
+            json={
+                "email_chain": [],
+                "most_recent_reply": {
+                    "subject": "Quote",
+                    "body": "Price: $1000 USD",
+                    "from_email": "supplier@example.com",
+                    "date": "2024-01-16T10:00:00Z"
+                },
+                "rfq_id": "RFQ-001",
+                "supplier_id": "SUP-001"
+            }
+        )
+        assert classify_response.status_code == 200
+        email_id = classify_response.json()["email_id"]
+        actual_classification = classify_response.json()["classification"]
+        
+        # Test classification mismatch
+        wrong_classification = "clarification_request" if actual_classification == "quote" else "quote"
+        response = client.post(
+            "/api/emails/process",
+            json={
+                "email_id": email_id,
+                "classification": wrong_classification
+            }
+        )
+        assert response.status_code == 400
+        assert "mismatch" in response.json()["detail"].lower()
+
+
 class TestE2ECleanup:
     """Test that server cleanup works correctly."""
     
@@ -606,3 +1599,4 @@ class TestE2ECleanup:
         except Exception:
             # If server is already shutting down, that's okay
             pass
+

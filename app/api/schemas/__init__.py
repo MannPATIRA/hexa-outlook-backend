@@ -1,6 +1,22 @@
 from .pr_schemas import PRResponse, PRListResponse
 from .supplier_schemas import SupplierSearchRequest, SupplierResponse, SupplierListResponse
 from .rfq_schemas import RFQGenerateRequest, RFQResponse, RFQListResponse, RFQFinalizeRequest, RFQFinalizeResponse
+from .email_schemas import (
+    EmailClassifyRequest,
+    EmailClassifyResponse,
+    EmailProcessRequest,
+    EmailProcessResponse,
+    SuggestResponseRequest,
+    SuggestResponseResponse,
+    ForwardToEngineeringRequest,
+    ForwardToEngineeringResponse,
+    EngineerResponseRequest,
+    EngineerResponseResponse,
+    ExtractQuoteRequest,
+    ExtractQuoteResponse,
+    QuoteResponse,
+    QuoteListResponse,
+)
 
 __all__ = [
     "PRResponse",
@@ -13,4 +29,18 @@ __all__ = [
     "RFQListResponse",
     "RFQFinalizeRequest",
     "RFQFinalizeResponse",
+    "EmailClassifyRequest",
+    "EmailClassifyResponse",
+    "EmailProcessRequest",
+    "EmailProcessResponse",
+    "SuggestResponseRequest",
+    "SuggestResponseResponse",
+    "ForwardToEngineeringRequest",
+    "ForwardToEngineeringResponse",
+    "EngineerResponseRequest",
+    "EngineerResponseResponse",
+    "ExtractQuoteRequest",
+    "ExtractQuoteResponse",
+    "QuoteResponse",
+    "QuoteListResponse",
 ]
