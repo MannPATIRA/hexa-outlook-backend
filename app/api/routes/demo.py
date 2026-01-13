@@ -27,7 +27,7 @@ class AutoReplyRequest(BaseModel):
     original_message_id: str  # Message-ID header of original email (for threading)
     material: str  # Material name for generating reply content
     reply_type: str = "quote"  # "quote", "clarification_procurement", "clarification_engineering", or "random"
-    delay_seconds: int = 30  # How long to wait before sending
+    delay_seconds: int = 5  # How long to wait before sending
     quantity: int = 100  # Quantity for quote calculations
     
     model_config = ConfigDict(
@@ -38,7 +38,7 @@ class AutoReplyRequest(BaseModel):
                 "original_message_id": "<abc123@mail.outlook.com>",
                 "material": "Steel Brackets",
                 "reply_type": "quote",
-                "delay_seconds": 30,
+                "delay_seconds": 5,
                 "quantity": 100
             }
         }
@@ -84,6 +84,58 @@ class DemoStatusResponse(BaseModel):
     message: str
 
 
+class RFQDetail(BaseModel):
+    """Details for a single RFQ to schedule replies for."""
+    
+    to_email: str  # The user's email (where to send the reply)
+    original_subject: str  # Subject of the original RFQ email
+    original_message_id: str  # Message-ID header of original email (for threading)
+    material: str  # Material name for generating reply content
+    quantity: int = 100  # Quantity for quote calculations
+
+
+class BatchAutoReplyRequest(BaseModel):
+    """Request to schedule multiple auto-replies with guaranteed distribution."""
+    
+    rfqs: List[RFQDetail]  # List of RFQ details
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "rfqs": [
+                    {
+                        "to_email": "user@company.com",
+                        "original_subject": "RFQ for Steel Brackets - 100 pcs",
+                        "original_message_id": "<abc123@mail.outlook.com>",
+                        "material": "Steel Brackets",
+                        "quantity": 100
+                    }
+                ]
+            }
+        }
+    )
+
+
+class ScheduledReplyDetail(BaseModel):
+    """Details of a scheduled reply."""
+    
+    reply_id: str
+    to_email: str
+    reply_type: str
+    delay_seconds: int
+
+
+class BatchAutoReplyResponse(BaseModel):
+    """Response after scheduling batch auto-replies."""
+    
+    success: bool
+    total_scheduled: int
+    scheduled_replies: List[ScheduledReplyDetail]
+    distribution: dict
+    message: str
+    error: Optional[str] = None
+
+
 # ============================================================================
 # API Endpoints
 # ============================================================================
@@ -124,10 +176,8 @@ async def schedule_auto_reply(request: AutoReplyRequest):
     """
     Schedule an automatic email reply to be sent after a delay.
     
-    This is the main endpoint for triggering demo replies. The email will:
-    - Be sent from the configured demo supplier email
-    - Include proper threading headers (In-Reply-To, References)
-    - Appear as a reply in the same email thread as the original RFQ
+    **IMPORTANT:** If you're sending multiple RFQs, use `/schedule-replies-batch` instead
+    to guarantee minimum distribution (1 engineering, 1 procurement, 3 quotes) with proper threading.
     
     **How to use:**
     
@@ -215,3 +265,126 @@ async def quick_test_send(to_email: str):
         "message": f"Test email will be sent to {to_email} in 1 second",
         "reply_id": result.get("reply_id")
     }
+
+
+@router.post("/schedule-replies-batch", response_model=BatchAutoReplyResponse)
+async def schedule_batch_auto_replies(request: BatchAutoReplyRequest):
+    """
+    Schedule multiple auto-replies with guaranteed distribution.
+    
+    Ensures that replies always include:
+    - At least 1 engineering clarification
+    - At least 1 procurement clarification
+    - At least 3 quotes
+    
+    If fewer RFQs are sent than needed for minimums, schedules multiple replies per RFQ.
+    Replies are sent with staggered delays (5s, 10s, 15s, etc.) so they arrive sequentially.
+    """
+    if not auto_reply_service.is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="SMTP not configured. Set DEMO_SUPPLIER_EMAIL and DEMO_SUPPLIER_PASSWORD environment variables."
+        )
+    
+    # Required distribution
+    REQUIRED_DISTRIBUTION = {
+        "clarification_engineering": 1,
+        "clarification_procurement": 1,
+        "quote": 3
+    }
+    TOTAL_REQUIRED = sum(REQUIRED_DISTRIBUTION.values())  # 5 total
+    
+    num_rfqs = len(request.rfqs)
+    if num_rfqs == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one RFQ is required"
+        )
+    
+    # Build the reply schedule
+    reply_schedule = []
+    
+    # First, ensure minimums are met
+    reply_types_needed = []
+    for reply_type, count in REQUIRED_DISTRIBUTION.items():
+        reply_types_needed.extend([reply_type] * count)
+    
+    # If we have fewer RFQs than required replies, we'll schedule multiple replies per RFQ
+    # Otherwise, distribute evenly across RFQs
+    if num_rfqs < TOTAL_REQUIRED:
+        # Schedule multiple replies per RFQ to meet minimums
+        rfq_index = 0
+        for reply_type in reply_types_needed:
+            rfq = request.rfqs[rfq_index % num_rfqs]
+            reply_schedule.append({
+                "rfq": rfq,
+                "reply_type": reply_type
+            })
+            rfq_index += 1
+    else:
+        # We have enough RFQs, distribute evenly
+        # First assign required types
+        for i, reply_type in enumerate(reply_types_needed):
+            if i < num_rfqs:
+                reply_schedule.append({
+                    "rfq": request.rfqs[i],
+                    "reply_type": reply_type
+                })
+        
+        # Fill remaining RFQs with quotes (most common)
+        for i in range(len(reply_types_needed), num_rfqs):
+            reply_schedule.append({
+                "rfq": request.rfqs[i],
+                "reply_type": "quote"
+            })
+    
+    # Schedule all replies with staggered delays
+    scheduled_replies = []
+    base_delay = 5  # Start at 5 seconds
+    delay_increment = 5  # 5 seconds between each reply
+    
+    for i, schedule_item in enumerate(reply_schedule):
+        delay = base_delay + (i * delay_increment)
+        
+        result = auto_reply_service.schedule_reply(
+            to_email=schedule_item["rfq"].to_email,
+            original_subject=schedule_item["rfq"].original_subject,
+            original_message_id=schedule_item["rfq"].original_message_id,
+            material=schedule_item["rfq"].material,
+            reply_type=schedule_item["reply_type"],
+            delay_seconds=delay,
+            quantity=schedule_item["rfq"].quantity
+        )
+        
+        if result.get("success"):
+            scheduled_replies.append(ScheduledReplyDetail(
+                reply_id=result.get("reply_id"),
+                to_email=schedule_item["rfq"].to_email,
+                reply_type=schedule_item["reply_type"],
+                delay_seconds=delay
+            ))
+        else:
+            # If any reply fails, return error
+            return BatchAutoReplyResponse(
+                success=False,
+                total_scheduled=len(scheduled_replies),
+                scheduled_replies=scheduled_replies,
+                distribution=REQUIRED_DISTRIBUTION,
+                message=f"Failed to schedule all replies. {len(scheduled_replies)} succeeded.",
+                error=result.get("error", "Unknown error")
+            )
+    
+    # Count actual distribution
+    actual_distribution = {
+        "clarification_engineering": sum(1 for r in scheduled_replies if r.reply_type == "clarification_engineering"),
+        "clarification_procurement": sum(1 for r in scheduled_replies if r.reply_type == "clarification_procurement"),
+        "quote": sum(1 for r in scheduled_replies if r.reply_type == "quote")
+    }
+    
+    return BatchAutoReplyResponse(
+        success=True,
+        total_scheduled=len(scheduled_replies),
+        scheduled_replies=scheduled_replies,
+        distribution=actual_distribution,
+        message=f"Successfully scheduled {len(scheduled_replies)} replies with guaranteed distribution. Replies will arrive with {delay_increment}s intervals starting in {base_delay}s."
+    )

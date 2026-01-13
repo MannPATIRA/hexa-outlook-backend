@@ -182,7 +182,7 @@ Sales Department
         original_message_id: str,
         material: str,
         reply_type: str = "quote",  # "quote", "clarification_procurement", "clarification_engineering"
-        delay_seconds: int = 30,
+        delay_seconds: int = 5,
         quantity: int = 100
     ) -> dict:
         """

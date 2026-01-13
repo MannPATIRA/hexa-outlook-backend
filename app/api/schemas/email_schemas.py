@@ -87,6 +87,7 @@ class EmailProcessResponse(BaseModel):
     email_id: str
     sub_classification: Optional[str] = None
     question: Optional[str] = None
+    questions: Optional[List[str]] = None  # All extracted questions
     suggested_response: Optional[str] = None
     requires_engineering: bool = False
     message: Optional[str] = None
@@ -98,6 +99,7 @@ class EmailProcessResponse(BaseModel):
                 "email_id": "EMAIL-001",
                 "sub_classification": "procurement",
                 "question": "What is the delivery address?",
+                "questions": ["What is the delivery address?", "What are the payment terms?"],
                 "suggested_response": "Dear Supplier,\n\nOur delivery address is...",
                 "requires_engineering": False
             }

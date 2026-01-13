@@ -103,17 +103,12 @@ async def process_email(request: EmailProcessRequest):
             )
         
         if request.classification == "clarification_request":
-            # Extract question from email body (simplified - in production, use LLM)
-            # For now, use first few sentences or a reasonable chunk
+            # Use LLM to extract questions from email body
             body_text = email_classification.body.strip()
-            # Try to find question markers or use first paragraph
-            if "?" in body_text:
-                question = body_text.split("?")[0] + "?"
-            else:
-                # Use first 200 characters or first sentence
-                question = body_text[:200] if len(body_text) > 200 else body_text
-                if "." in question:
-                    question = question.split(".")[0] + "."
+            extracted_questions = llm_classifier.extract_questions(body_text)
+            
+            # Use the first extracted question or the full context
+            question = extracted_questions[0] if extracted_questions else body_text[:300]
             
             # Classify clarification type
             clarification = clarification_service.classify_clarification(
@@ -136,6 +131,7 @@ async def process_email(request: EmailProcessRequest):
                 email_id=request.email_id,
                 sub_classification=clarification.type,
                 question=clarification.question,
+                questions=extracted_questions,  # Include all extracted questions
                 suggested_response=suggested_response,
                 requires_engineering=(clarification.type == "engineering"),
                 message="Clarification processed successfully",
