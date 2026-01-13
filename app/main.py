@@ -5,6 +5,14 @@ from fastapi.exceptions import RequestValidationError
 from .api.routes import api_router
 import logging
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Find .env file in project root (one directory up from this file)
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
