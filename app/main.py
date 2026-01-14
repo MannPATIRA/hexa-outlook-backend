@@ -30,10 +30,19 @@ app = FastAPI(
 )
 
 # Configure CORS
-# In production, replace "*" with specific Outlook add-in domain(s)
+# Allow frontend and Outlook add-in domains
+allowed_origins = [
+    "https://hexa-outlook-frontend.vercel.app",
+    "https://outlook.office.com",
+    "https://outlook.live.com",
+    "https://outlook.office365.com",
+    "http://localhost:3000",  # For local development
+    "http://localhost:5173",  # For local Vite dev server
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Replace with specific origins in production
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
