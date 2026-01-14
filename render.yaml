@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: hexa-outlook-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: ./start.sh
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: OPENAI_API_KEY
+        sync: false  # Set this in Render dashboard
+      - key: DEMO_SUPPLIER_EMAIL
+        sync: false  # Optional - set in dashboard if using demo features
+      - key: DEMO_SUPPLIER_PASSWORD
+        sync: false  # Optional - set in dashboard if using demo features
+      - key: DEMO_SUPPLIER_NAME
+        sync: false  # Optional - set in dashboard if using demo features
