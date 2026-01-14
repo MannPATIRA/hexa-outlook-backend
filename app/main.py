@@ -30,7 +30,8 @@ app = FastAPI(
 )
 
 # Configure CORS
-# Allow frontend and Outlook add-in domains
+# Temporarily allow all origins to debug CORS issues
+# TODO: Once working, restrict to specific origins below
 allowed_origins = [
     "https://hexa-outlook-frontend.vercel.app",
     "https://outlook.office.com",
@@ -38,14 +39,18 @@ allowed_origins = [
     "https://outlook.office365.com",
     "http://localhost:3000",  # For local development
     "http://localhost:5173",  # For local Vite dev server
+    "http://localhost:8080",  # For local development
 ]
 
+# For now, allow all origins to fix the 400 Bad Request on OPTIONS
+# Change this to `allowed_origins` once you identify the exact origins being used
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=["*"],  # Allow all origins temporarily
+    allow_credentials=False,  # Must be False when using wildcard
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
