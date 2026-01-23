@@ -29,6 +29,8 @@ class AutoReplyRequest(BaseModel):
     reply_type: str = "quote"  # "quote", "clarification_procurement", "clarification_engineering", or "random"
     delay_seconds: int = 5  # How long to wait before sending
     quantity: int = 100  # Quantity for quote calculations
+    supplier_id: Optional[str] = None  # Supplier ID for tracking
+    supplier_name: Optional[str] = None  # Supplier name for display
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -39,7 +41,9 @@ class AutoReplyRequest(BaseModel):
                 "material": "Steel Brackets",
                 "reply_type": "quote",
                 "delay_seconds": 5,
-                "quantity": 100
+                "quantity": 100,
+                "supplier_id": "SUP-001",
+                "supplier_name": "ABC Manufacturing"
             }
         }
     )
@@ -93,6 +97,8 @@ class RFQDetail(BaseModel):
     material: str  # Material name for generating reply content
     quantity: int = 100  # Quantity for quote calculations
     pr_id: Optional[str] = None  # Optional PR ID for special handling (e.g., PR001)
+    supplier_id: Optional[str] = None  # Supplier ID for tracking
+    supplier_name: Optional[str] = None  # Supplier name for display
 
 
 class BatchAutoReplyRequest(BaseModel):
@@ -219,7 +225,9 @@ async def schedule_auto_reply(request: AutoReplyRequest):
         material=request.material,
         reply_type=reply_type,
         delay_seconds=request.delay_seconds,
-        quantity=request.quantity
+        quantity=request.quantity,
+        supplier_id=request.supplier_id,
+        supplier_name=request.supplier_name
     )
     
     if not result.get("success"):
@@ -422,7 +430,9 @@ async def schedule_batch_auto_replies(request: BatchAutoReplyRequest):
             material=schedule_item["rfq"].material,
             reply_type=schedule_item["reply_type"],
             delay_seconds=delay,
-            quantity=schedule_item["rfq"].quantity
+            quantity=schedule_item["rfq"].quantity,
+            supplier_id=schedule_item["rfq"].supplier_id,
+            supplier_name=schedule_item["rfq"].supplier_name
         )
         
         if result.get("success"):

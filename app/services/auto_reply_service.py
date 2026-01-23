@@ -80,10 +80,13 @@ class AutoReplyService:
         self._reply_counter += 1
         return f"AUTO-REPLY-{self._reply_counter:03d}"
     
-    def generate_quote_reply(self, material: str, quantity: int = 100) -> str:
+    def generate_quote_reply(self, material: str, quantity: int = 100, display_name: Optional[str] = None) -> str:
         """Generate a realistic quote email body."""
         price = random.randint(35, 75)
         delivery = random.choice(["2-3 weeks", "3-4 weeks", "4-6 weeks"])
+        
+        # Use provided display_name or fall back to self.sender_name
+        sender_name = display_name if display_name else self.sender_name
         
         return f"""Dear Procurement Team,
 
@@ -113,13 +116,16 @@ Please let us know if you would like to proceed or if you have any questions.
 
 Best regards,
 
-{self.sender_name}
+{sender_name}
 Sales Department
 Email: {self.sender_email}
 """
 
-    def generate_clarification_reply(self, material: str, clarification_type: str = "procurement") -> str:
+    def generate_clarification_reply(self, material: str, clarification_type: str = "procurement", display_name: Optional[str] = None) -> str:
         """Generate a clarification request email body."""
+        
+        # Use provided display_name or fall back to self.sender_name
+        sender_name = display_name if display_name else self.sender_name
         
         if clarification_type == "engineering":
             return f"""Dear Procurement Team,
@@ -152,7 +158,7 @@ Please respond at your earliest convenience.
 
 Best regards,
 
-{self.sender_name}
+{sender_name}
 Engineering Department
 """
         else:
@@ -178,7 +184,7 @@ Once we have this information, we will provide a detailed quotation.
 
 Best regards,
 
-{self.sender_name}
+{sender_name}
 Sales Department
 """
 
@@ -190,7 +196,9 @@ Sales Department
         material: str,
         reply_type: str = "quote",  # "quote", "clarification_procurement", "clarification_engineering"
         delay_seconds: int = 5,
-        quantity: int = 100
+        quantity: int = 100,
+        supplier_id: Optional[str] = None,
+        supplier_name: Optional[str] = None
     ) -> dict:
         """
         Schedule a real email reply to be sent after the specified delay.
@@ -203,6 +211,8 @@ Sales Department
             reply_type: Type of reply to generate
             delay_seconds: How long to wait before sending
             quantity: Quantity for quote calculations
+            supplier_id: Optional supplier ID for tracking
+            supplier_name: Optional supplier name for email display
             
         Returns:
             Dict with reply_id and status
@@ -221,13 +231,16 @@ Sales Department
         
         reply_id = self._generate_reply_id()
         
+        # Use supplier_name if provided, otherwise fall back to environment variable
+        display_name = supplier_name if supplier_name else self.sender_name
+        
         # Generate reply content based on type
         if reply_type == "quote":
-            body = self.generate_quote_reply(material, quantity)
+            body = self.generate_quote_reply(material, quantity, display_name)
         elif reply_type == "clarification_engineering":
-            body = self.generate_clarification_reply(material, "engineering")
+            body = self.generate_clarification_reply(material, "engineering", display_name)
         else:
-            body = self.generate_clarification_reply(material, "procurement")
+            body = self.generate_clarification_reply(material, "procurement", display_name)
         
         # Track the scheduled reply
         self._scheduled_replies[reply_id] = ScheduledReply(
@@ -244,7 +257,8 @@ Sales Department
                 to_email=to_email,
                 subject=f"RE: {original_subject}",
                 body=body,
-                original_message_id=original_message_id
+                original_message_id=original_message_id,
+                display_name=display_name
             )
             self._scheduled_replies[reply_id].status = "sent" if success else "failed"
         
@@ -256,7 +270,9 @@ Sales Department
             "reply_id": reply_id,
             "message": f"Reply scheduled to be sent in {delay_seconds} seconds",
             "to_email": to_email,
-            "reply_type": reply_type
+            "reply_type": reply_type,
+            "supplier_id": supplier_id,
+            "supplier_name": display_name
         }
     
     def _send_email(
@@ -264,7 +280,8 @@ Sales Department
         to_email: str,
         subject: str,
         body: str,
-        original_message_id: str
+        original_message_id: str,
+        display_name: Optional[str] = None
     ) -> bool:
         """
         Send the actual email via SMTP.
@@ -272,9 +289,12 @@ Sales Department
         Returns True if successful, False otherwise.
         """
         try:
+            # Use provided display_name or fall back to self.sender_name
+            sender_display_name = display_name if display_name else self.sender_name
+            
             # Create message
             msg = MIMEMultipart("alternative")
-            msg["From"] = f"{self.sender_name} <{self.sender_email}>"
+            msg["From"] = f"{sender_display_name} <{self.sender_email}>"
             msg["To"] = to_email
             msg["Subject"] = subject
             

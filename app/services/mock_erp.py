@@ -215,3 +215,7 @@ class MockERP:
         """Update the status of an RFQ."""
         if rfq_id in self._rfqs:
             self._rfqs[rfq_id].status = status
+    
+    def get_rfqs_by_pr_id(self, pr_id: str) -> List[RFQ]:
+        """Get all RFQs for a specific PR."""
+        return [rfq for rfq in self._rfqs.values() if rfq.pr_id == pr_id]
