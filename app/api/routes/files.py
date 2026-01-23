@@ -41,6 +41,66 @@ def get_files_base_dir():
 FILES_BASE_DIR = get_files_base_dir()
 
 
+@router.get("/health")
+async def file_health_check():
+    """
+    Check if file directory is accessible and list available files.
+    
+    This endpoint helps diagnose file serving issues by showing:
+    - Whether the files directory exists
+    - What files are available
+    - Directory path being used
+    """
+    try:
+        logger.info("File health check requested")
+        
+        if not FILES_BASE_DIR.exists():
+            logger.error(f"Files directory does not exist: {FILES_BASE_DIR}")
+            return {
+                "status": "error",
+                "message": f"Files directory does not exist: {FILES_BASE_DIR}",
+                "path": str(FILES_BASE_DIR),
+                "current_working_directory": str(Path.cwd()),
+                "script_location": str(Path(__file__).parent)
+            }
+        
+        # List all files in directory
+        all_items = list(FILES_BASE_DIR.glob("*"))
+        files = [f for f in all_items if f.is_file()]
+        directories = [d for d in all_items if d.is_dir()]
+        
+        # Categorize files by type
+        step_files = [f.name for f in files if f.suffix.lower() in ['.step', '.stp']]
+        pdf_files = [f.name for f in files if f.suffix.lower() == '.pdf']
+        dwg_files = [f.name for f in files if f.suffix.lower() in ['.dwg', '.dxf']]
+        other_files = [f.name for f in files if f.suffix.lower() not in ['.step', '.stp', '.pdf', '.dwg', '.dxf']]
+        
+        logger.info(f"Health check: Found {len(files)} files in {FILES_BASE_DIR}")
+        
+        return {
+            "status": "ok",
+            "directory": str(FILES_BASE_DIR),
+            "directory_exists": True,
+            "total_files": len(files),
+            "total_directories": len(directories),
+            "step_files": step_files,
+            "pdf_files": pdf_files,
+            "dwg_files": dwg_files,
+            "other_files": other_files,
+            "all_files": [f.name for f in files],
+            "directories": [d.name for d in directories],
+            "current_working_directory": str(Path.cwd())
+        }
+    except Exception as e:
+        logger.error(f"Error in file health check: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "message": str(e),
+            "path": str(FILES_BASE_DIR),
+            "current_working_directory": str(Path.cwd())
+        }
+
+
 @router.get("/{filename}")
 async def get_file(filename: str):
     """
@@ -166,63 +226,3 @@ async def get_rfq_file(rfq_id: str, filename: str):
     # For now, just use the regular file endpoint logic
     # In the future, this could organize files by RFQ: files/rfq/{rfq_id}/{filename}
     return await get_file(filename)
-
-
-@router.get("/health")
-async def file_health_check():
-    """
-    Check if file directory is accessible and list available files.
-    
-    This endpoint helps diagnose file serving issues by showing:
-    - Whether the files directory exists
-    - What files are available
-    - Directory path being used
-    """
-    try:
-        logger.info("File health check requested")
-        
-        if not FILES_BASE_DIR.exists():
-            logger.error(f"Files directory does not exist: {FILES_BASE_DIR}")
-            return {
-                "status": "error",
-                "message": f"Files directory does not exist: {FILES_BASE_DIR}",
-                "path": str(FILES_BASE_DIR),
-                "current_working_directory": str(Path.cwd()),
-                "script_location": str(Path(__file__).parent)
-            }
-        
-        # List all files in directory
-        all_items = list(FILES_BASE_DIR.glob("*"))
-        files = [f for f in all_items if f.is_file()]
-        directories = [d for d in all_items if d.is_dir()]
-        
-        # Categorize files by type
-        step_files = [f.name for f in files if f.suffix.lower() in ['.step', '.stp']]
-        pdf_files = [f.name for f in files if f.suffix.lower() == '.pdf']
-        dwg_files = [f.name for f in files if f.suffix.lower() in ['.dwg', '.dxf']]
-        other_files = [f.name for f in files if f.suffix.lower() not in ['.step', '.stp', '.pdf', '.dwg', '.dxf']]
-        
-        logger.info(f"Health check: Found {len(files)} files in {FILES_BASE_DIR}")
-        
-        return {
-            "status": "ok",
-            "directory": str(FILES_BASE_DIR),
-            "directory_exists": True,
-            "total_files": len(files),
-            "total_directories": len(directories),
-            "step_files": step_files,
-            "pdf_files": pdf_files,
-            "dwg_files": dwg_files,
-            "other_files": other_files,
-            "all_files": [f.name for f in files],
-            "directories": [d.name for d in directories],
-            "current_working_directory": str(Path.cwd())
-        }
-    except Exception as e:
-        logger.error(f"Error in file health check: {str(e)}", exc_info=True)
-        return {
-            "status": "error",
-            "message": str(e),
-            "path": str(FILES_BASE_DIR),
-            "current_working_directory": str(Path.cwd())
-        }
