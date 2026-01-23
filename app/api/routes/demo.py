@@ -92,6 +92,7 @@ class RFQDetail(BaseModel):
     original_message_id: str  # Message-ID header of original email (for threading)
     material: str  # Material name for generating reply content
     quantity: int = 100  # Quantity for quote calculations
+    pr_id: Optional[str] = None  # Optional PR ID for special handling (e.g., PR001)
 
 
 class BatchAutoReplyRequest(BaseModel):
@@ -277,6 +278,8 @@ async def schedule_batch_auto_replies(request: BatchAutoReplyRequest):
     - At least 1 procurement clarification
     - At least 3 quotes
     
+    Special handling for PR001: Ensures exactly 3 quotes and 2 clarifications (1 engineering + 1 procurement).
+    
     If fewer RFQs are sent than needed for minimums, schedules multiple replies per RFQ.
     Replies are sent with staggered delays (5s, 10s, 15s, etc.) so they arrive sequentially.
     """
@@ -286,14 +289,6 @@ async def schedule_batch_auto_replies(request: BatchAutoReplyRequest):
             detail="SMTP not configured. Set DEMO_SUPPLIER_EMAIL and DEMO_SUPPLIER_PASSWORD environment variables."
         )
     
-    # Required distribution
-    REQUIRED_DISTRIBUTION = {
-        "clarification_engineering": 1,
-        "clarification_procurement": 1,
-        "quote": 3
-    }
-    TOTAL_REQUIRED = sum(REQUIRED_DISTRIBUTION.values())  # 5 total
-    
     num_rfqs = len(request.rfqs)
     if num_rfqs == 0:
         raise HTTPException(
@@ -301,17 +296,71 @@ async def schedule_batch_auto_replies(request: BatchAutoReplyRequest):
             detail="At least one RFQ is required"
         )
     
+    # Check if this is for PR001
+    # PR001 can be identified by multiple signals:
+    # 1. pr_id field set to "PR-001" or "PR001"
+    # 2. Material "MAT-12345" with exactly 5 RFQs
+    # 3. Subject line containing "PR-001" or "PR001"
+    is_pr001 = False
+    pr_ids = {rfq.pr_id for rfq in request.rfqs if rfq.pr_id}
+    subjects = {rfq.original_subject for rfq in request.rfqs}
+    materials = {rfq.material for rfq in request.rfqs}
+    
+    # Check multiple signals for PR001 detection
+    if pr_ids:
+        # Check if any RFQ has PR001 as pr_id
+        if any(pr_id in ["PR-001", "PR001"] for pr_id in pr_ids):
+            is_pr001 = True
+    elif num_rfqs == 5 and "MAT-12345" in materials:
+        # Fallback: Check if all RFQs have the same material and it's MAT-12345
+        if len(materials) == 1:
+            is_pr001 = True
+    elif any("PR-001" in subj or "PR001" in subj for subj in subjects):
+        # Check subject lines for PR001 reference
+        is_pr001 = True
+    
+    # Additional check: if we have exactly 5 RFQs with MAT-12345, treat as PR001
+    if not is_pr001 and num_rfqs == 5 and "MAT-12345" in materials:
+        is_pr001 = True
+    
+    # Required distribution - special handling for PR001
+    if is_pr001:
+        # PR001: exactly 3 quotes + 2 clarifications (1 engineering + 1 procurement)
+        REQUIRED_DISTRIBUTION = {
+            "clarification_engineering": 1,
+            "clarification_procurement": 1,
+            "quote": 3
+        }
+        # For PR001, use deterministic order: 3 quotes first, then 2 clarifications
+        # This ensures consistent distribution
+        reply_types_needed = ["quote"] * 3 + ["clarification_engineering", "clarification_procurement"]
+    else:
+        # Default distribution
+        REQUIRED_DISTRIBUTION = {
+            "clarification_engineering": 1,
+            "clarification_procurement": 1,
+            "quote": 3
+        }
+        # Build reply types list for non-PR001
+        reply_types_needed = []
+        for reply_type, count in REQUIRED_DISTRIBUTION.items():
+            reply_types_needed.extend([reply_type] * count)
+    
+    TOTAL_REQUIRED = sum(REQUIRED_DISTRIBUTION.values())  # 5 total
+    
     # Build the reply schedule
     reply_schedule = []
     
-    # First, ensure minimums are met
-    reply_types_needed = []
-    for reply_type, count in REQUIRED_DISTRIBUTION.items():
-        reply_types_needed.extend([reply_type] * count)
-    
-    # If we have fewer RFQs than required replies, we'll schedule multiple replies per RFQ
-    # Otherwise, distribute evenly across RFQs
-    if num_rfqs < TOTAL_REQUIRED:
+    # For PR001 with exactly 5 RFQs, assign one reply type per RFQ
+    if is_pr001 and num_rfqs == 5:
+        # Assign exactly: 3 quotes, 1 engineering clarification, 1 procurement clarification
+        # Use deterministic order to ensure correct distribution
+        for i, reply_type in enumerate(reply_types_needed):
+            reply_schedule.append({
+                "rfq": request.rfqs[i],
+                "reply_type": reply_type
+            })
+    elif num_rfqs < TOTAL_REQUIRED:
         # Schedule multiple replies per RFQ to meet minimums
         rfq_index = 0
         for reply_type in reply_types_needed:
@@ -337,6 +386,26 @@ async def schedule_batch_auto_replies(request: BatchAutoReplyRequest):
                 "rfq": request.rfqs[i],
                 "reply_type": "quote"
             })
+    
+    # Validate distribution before scheduling (especially for PR001)
+    if is_pr001:
+        # Count the scheduled reply types
+        scheduled_quotes = sum(1 for item in reply_schedule if item["reply_type"] == "quote")
+        scheduled_eng_clar = sum(1 for item in reply_schedule if item["reply_type"] == "clarification_engineering")
+        scheduled_proc_clar = sum(1 for item in reply_schedule if item["reply_type"] == "clarification_procurement")
+        
+        # For PR001, we MUST have exactly 3 quotes and 2 clarifications (1 eng + 1 proc)
+        if scheduled_quotes != 3 or scheduled_eng_clar != 1 or scheduled_proc_clar != 1:
+            # Fix the distribution if it's wrong
+            reply_schedule = []
+            # Rebuild with correct distribution: 3 quotes, 1 engineering, 1 procurement
+            correct_types = ["quote"] * 3 + ["clarification_engineering", "clarification_procurement"]
+            for i, reply_type in enumerate(correct_types):
+                if i < num_rfqs:
+                    reply_schedule.append({
+                        "rfq": request.rfqs[i],
+                        "reply_type": reply_type
+                    })
     
     # Schedule all replies with staggered delays
     scheduled_replies = []

@@ -45,6 +45,7 @@ class AutoReplyService:
         # Gmail SMTP settings
         self.smtp_server = "smtp.gmail.com"
         self.smtp_port = 587
+        self.smtp_port_ssl = 465  # Alternative SSL port
         
         # Track scheduled replies
         self._scheduled_replies: dict = {}
@@ -68,6 +69,12 @@ class AutoReplyService:
     def is_configured(self) -> bool:
         """Check if SMTP credentials are configured."""
         return bool(self.sender_email and self.sender_password)
+    
+    def _is_render_free_tier(self) -> bool:
+        """Check if running on Render free tier (which blocks SMTP)."""
+        import os
+        # Render sets RENDER environment variable
+        return os.getenv("RENDER") == "true" and os.getenv("RENDER_SERVICE_TYPE") is not None
     
     def _generate_reply_id(self) -> str:
         self._reply_counter += 1
@@ -207,6 +214,11 @@ Sales Department
                 "reply_id": None
             }
         
+        # Warn if on Render free tier
+        if self._is_render_free_tier():
+            print("⚠️  Warning: Render free tier blocks SMTP. Email sending may fail.")
+            print("   Consider upgrading to a paid plan or using an email API service.")
+        
         reply_id = self._generate_reply_id()
         
         # Generate reply content based on type
@@ -279,22 +291,52 @@ Sales Department
             msg.attach(MIMEText(html_body, "html"))
             
             # Connect and send
+            # Try port 587 (TLS) first, then fallback to 465 (SSL)
             context = ssl.create_default_context()
             
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls(context=context)
-                server.login(self.sender_email, self.sender_password)
-                server.send_message(msg)
-            
-            print(f"✅ Email sent successfully to {to_email}")
-            return True
+            # Try port 587 (TLS/STARTTLS)
+            try:
+                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=10) as server:
+                    server.starttls(context=context)
+                    server.login(self.sender_email, self.sender_password)
+                    server.send_message(msg)
+                print(f"✅ Email sent successfully to {to_email}")
+                return True
+            except (OSError, ConnectionError) as e:
+                # Port 587 might be blocked (common on free hosting)
+                # Try port 465 (SSL) as fallback
+                error_msg = str(e)
+                if "Network is unreachable" in error_msg or "101" in error_msg:
+                    print(f"⚠️  Port 587 blocked, trying SSL port 465...")
+                    try:
+                        with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port_ssl, timeout=10) as server:
+                            server.login(self.sender_email, self.sender_password)
+                            server.send_message(msg)
+                        print(f"✅ Email sent successfully to {to_email} (via SSL)")
+                        return True
+                    except Exception as ssl_error:
+                        print(f"❌ Both SMTP ports blocked. This is common on free hosting tiers.")
+                        print(f"   Error: {ssl_error}")
+                        print(f"   💡 Solution: Use a paid Render plan or switch to an email API service (SendGrid, Mailgun, etc.)")
+                        return False
+                else:
+                    raise  # Re-raise if it's a different error
             
         except smtplib.SMTPAuthenticationError as e:
             print(f"❌ SMTP Authentication failed: {e}")
             print("   Make sure you're using an App Password, not your regular password!")
             return False
         except Exception as e:
-            print(f"❌ Failed to send email: {e}")
+            error_str = str(e)
+            if "Network is unreachable" in error_str or "101" in error_str:
+                print(f"❌ SMTP connection blocked by hosting provider")
+                print(f"   This is common on free tiers (Render, Heroku, etc.)")
+                print(f"   💡 Solutions:")
+                print(f"      1. Upgrade to a paid Render plan")
+                print(f"      2. Use an email API service (SendGrid, Mailgun, AWS SES)")
+                print(f"      3. Run locally for testing")
+            else:
+                print(f"❌ Failed to send email: {e}")
             return False
     
     def get_scheduled_replies(self) -> list:
@@ -318,17 +360,45 @@ Sales Department
                 "error": "Not configured. Set DEMO_SUPPLIER_EMAIL and DEMO_SUPPLIER_PASSWORD."
             }
         
+        # Try port 587 (TLS) first
         try:
             context = ssl.create_default_context()
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+            with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=10) as server:
                 server.starttls(context=context)
                 server.login(self.sender_email, self.sender_password)
             
             return {
                 "success": True,
-                "message": "SMTP connection successful!",
-                "sender_email": self.sender_email
+                "message": "SMTP connection successful! (Port 587/TLS)",
+                "sender_email": self.sender_email,
+                "port": self.smtp_port
             }
+        except (OSError, ConnectionError) as e:
+            error_str = str(e)
+            if "Network is unreachable" in error_str or "101" in error_str:
+                # Try port 465 (SSL) as fallback
+                try:
+                    with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port_ssl, timeout=10) as server:
+                        server.login(self.sender_email, self.sender_password)
+                    return {
+                        "success": True,
+                        "message": "SMTP connection successful! (Port 465/SSL)",
+                        "sender_email": self.sender_email,
+                        "port": self.smtp_port_ssl,
+                        "warning": "Port 587 was blocked, using SSL port 465"
+                    }
+                except Exception as ssl_error:
+                    return {
+                        "success": False,
+                        "error": f"Both SMTP ports blocked. This is common on free hosting tiers.",
+                        "details": str(ssl_error),
+                        "suggestion": "Upgrade to a paid plan or use an email API service (SendGrid, Mailgun, AWS SES)"
+                    }
+            else:
+                return {
+                    "success": False,
+                    "error": str(e)
+                }
         except smtplib.SMTPAuthenticationError:
             return {
                 "success": False,

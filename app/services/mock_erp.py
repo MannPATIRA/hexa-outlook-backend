@@ -119,6 +119,33 @@ class MockERP:
                 contact_person="Lisa Chen",
                 phone="+1-555-0104"
             ),
+            Supplier(
+                supplier_id="SUP-005",
+                name="SteelWorks Manufacturing",
+                email="supplier-hexa@outlook.com",
+                capabilities=["Steel Components", "Machining", "SS304", "Welding"],
+                standard_for_materials=["MAT-12345"],
+                contact_person="Robert Taylor",
+                phone="+1-555-0105"
+            ),
+            Supplier(
+                supplier_id="SUP-006",
+                name="Precision Steel Corp",
+                email="supplier-hexa@outlook.com",
+                capabilities=["Steel Components", "SS304", "Precision Machining"],
+                standard_for_materials=["MAT-12345"],
+                contact_person="Emily Wilson",
+                phone="+1-555-0106"
+            ),
+            Supplier(
+                supplier_id="SUP-007",
+                name="Industrial Steel Solutions",
+                email="supplier-hexa@outlook.com",
+                capabilities=["Steel Components", "SS304", "Machining", "Steel Component"],
+                standard_for_materials=[],
+                contact_person="David Brown",
+                phone="+1-555-0107"
+            ),
         ]
         
         for supplier in suppliers:
