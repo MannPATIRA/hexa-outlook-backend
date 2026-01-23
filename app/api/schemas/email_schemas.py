@@ -284,3 +284,70 @@ class QuoteListResponse(BaseModel):
     """Response schema for a list of quotes."""
     
     quotes: List[QuoteResponse]
+
+
+class SupplierRFQInfo(BaseModel):
+    """Information about a supplier that received an RFQ."""
+    
+    supplier_id: str
+    supplier_name: str
+    supplier_email: str
+    rfq_id: str
+    rfq_status: str  # draft, finalized, sent
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "supplier_id": "SUP-001",
+                "supplier_name": "ABC Manufacturing",
+                "supplier_email": "procurement@abcmanufacturing.com",
+                "rfq_id": "RFQ-001",
+                "rfq_status": "sent"
+            }
+        }
+    )
+
+
+class QuoteComparisonResponse(BaseModel):
+    """Response schema for quote comparison showing all suppliers and their response status."""
+    
+    pr_id: str
+    suppliers_sent_rfq: List[SupplierRFQInfo]
+    quotes_received: List[QuoteResponse]
+    suppliers_without_quotes: List[str]  # Supplier names that haven't responded
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "pr_id": "PR-001",
+                "suppliers_sent_rfq": [
+                    {
+                        "supplier_id": "SUP-001",
+                        "supplier_name": "ABC Manufacturing",
+                        "supplier_email": "procurement@abcmanufacturing.com",
+                        "rfq_id": "RFQ-001",
+                        "rfq_status": "sent"
+                    },
+                    {
+                        "supplier_id": "SUP-002",
+                        "supplier_name": "XYZ Metalworks",
+                        "supplier_email": "procurement@xyzmetalworks.com",
+                        "rfq_id": "RFQ-002",
+                        "rfq_status": "sent"
+                    }
+                ],
+                "quotes_received": [
+                    {
+                        "quote_id": "QUOTE-001",
+                        "supplier_name": "ABC Manufacturing",
+                        "price": 1000.00,
+                        "currency": "USD",
+                        "delivery_time": "4-6 weeks",
+                        "quote_date": "2024-01-15T10:00:00Z",
+                        "status": "received"
+                    }
+                ],
+                "suppliers_without_quotes": ["XYZ Metalworks"]
+            }
+        }
+    )
