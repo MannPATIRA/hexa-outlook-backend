@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from . import prs, suppliers, rfqs, emails, quotes, demo
+from . import prs, suppliers, rfqs, emails, quotes, demo, files
 
 api_router = APIRouter()
 
@@ -9,3 +9,4 @@ api_router.include_router(rfqs.router, prefix="/rfqs", tags=["RFQs"])
 api_router.include_router(emails.router, prefix="/emails", tags=["Emails"])
 api_router.include_router(quotes.router, prefix="/quotes", tags=["Quotes"])
 api_router.include_router(demo.router, prefix="/demo", tags=["Demo & Testing"])
+api_router.include_router(files.router, prefix="/files", tags=["Files"])

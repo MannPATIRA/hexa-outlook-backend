@@ -168,7 +168,29 @@ Generates RFQ content for selected suppliers.
 }
 ```
 
-### 4. Finalize RFQ
+### 4. Get File
+**GET** `/api/files/{filename}`
+
+Serves drawing files and STEP files by filename.
+
+**Parameters:**
+- `filename`: Name of the file to retrieve (e.g., "drawing_PR001_main.pdf" or "model_PR001.step")
+
+**Response:**
+Returns the file content with appropriate content-type headers.
+
+**Example:**
+```
+GET /api/files/drawing_PR001_main.pdf
+GET /api/files/model_PR001.step
+```
+
+**Alternative Endpoint:**
+**GET** `/api/files/rfq/{rfq_id}/{filename}`
+
+Serves a file in the context of a specific RFQ.
+
+### 5. Finalize RFQ
 **POST** `/api/rfqs/finalize`
 
 Finalizes an RFQ with user-edited content.
@@ -230,10 +252,51 @@ The backend includes a `MockERP` class that simulates SAP ERP functionality with
 - Pre-populated sample suppliers
 - Supplier matching logic based on material codes and specifications
 
+## File Serving
+
+The backend serves drawing files and STEP files through the `/api/files/{filename}` endpoint.
+
+### File Storage
+Files are stored in the `files/` directory at the project root. The API expects files to match the filenames returned in the RFQ `attachments` array.
+
+### Accessing Files
+When the API returns filenames in the `attachments` array, the frontend should construct URLs like:
+```
+https://your-backend-url/api/files/{filename}
+```
+
+For example:
+- `drawing_PR001_main.pdf` → `https://your-backend-url/api/files/drawing_PR001_main.pdf`
+- `model_PR001.step` → `https://your-backend-url/api/files/model_PR001.step`
+
+### File Types Supported
+- **Drawing files**: PDF (`.pdf`), DWG (`.dwg`), DXF (`.dxf`)
+- **STEP files**: STEP (`.step`, `.stp`)
+
 ## Outlook Add-in Integration Notes
 
 ### Email Drafts
 The Outlook add-in should use `Office.context.mailbox.item` API to create email drafts from the RFQ content returned by the backend.
+
+### Attaching Files
+When creating email drafts, the add-in should:
+1. Read the `attachments` array from the RFQ response
+2. For each filename, fetch the file from `/api/files/{filename}`
+3. Attach the downloaded file to the Outlook email draft
+
+Example:
+```javascript
+// Get RFQ from API
+const rfq = await fetch('/api/rfqs/generate', {...});
+
+// For each attachment, download and attach
+for (const filename of rfq.attachments) {
+  const fileUrl = `https://your-backend-url/api/files/${filename}`;
+  const fileResponse = await fetch(fileUrl);
+  const fileBlob = await fileResponse.blob();
+  // Attach to Outlook email using Office.js API
+}
+```
 
 ### Email Sending
 The add-in should send emails using `Office.context.mailbox.item.send()` or Microsoft Graph API. This ensures emails are sent from the user's account and appear in their sent items.
