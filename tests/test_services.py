@@ -129,6 +129,7 @@ class TestPRService:
             assert "material_info" in decomposed
             assert "specifications" in decomposed
             assert "drawing_files" in decomposed
+            assert "step_files" in decomposed
             assert "quantities" in decomposed
             assert "requirements" in decomposed
     
@@ -159,6 +160,16 @@ class TestPRService:
             files = pr_service.extract_drawing_files(pr)
             
             assert files == pr.drawing_files
+            assert isinstance(files, list)
+    
+    def test_extract_step_files(self, pr_service, mock_erp):
+        """Test extracting step files."""
+        open_prs = mock_erp.get_open_prs()
+        if open_prs:
+            pr = open_prs[0]
+            files = pr_service.extract_step_files(pr)
+            
+            assert files == pr.step_files
             assert isinstance(files, list)
     
     def test_extract_quantities(self, pr_service, mock_erp):
@@ -238,7 +249,15 @@ class TestRFQService:
             assert "greeting" in rfq.body
             assert "introduction" in rfq.body
             assert "material_details" in rfq.body
+            assert "drawing_files" in rfq.body
+            assert "step_files" in rfq.body
             assert rfq.status == "draft"
+            
+            # Check that attachments include both drawing_files and step_files
+            assert isinstance(rfq.attachments, list)
+            # Attachments should include all drawing_files and step_files from PR
+            expected_attachments = len(pr.drawing_files) + len(pr.step_files)
+            assert len(rfq.attachments) == expected_attachments
             
             # Check that RFQs are stored in MockERP
             stored_rfq = mock_erp.get_rfq_by_id(rfq.rfq_id)

@@ -10,6 +10,7 @@ class PRResponse(BaseModel):
     material: str
     specs: Dict[str, Any]
     drawing_files: List[str]
+    step_files: List[str]
     quantities: int
     unit: str
     description: Optional[str] = None
@@ -27,6 +28,7 @@ class PRResponse(BaseModel):
                     "dimensions": "100mm x 50mm x 25mm"
                 },
                 "drawing_files": ["drawing1.pdf"],
+                "step_files": ["model1.step", "assembly.step"],
                 "quantities": 100,
                 "unit": "pcs",
                 "description": "Steel bracket",

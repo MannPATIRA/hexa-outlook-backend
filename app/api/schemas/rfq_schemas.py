@@ -26,6 +26,7 @@ class RFQBodyContent(BaseModel):
     material_details: Dict[str, Any]
     requirements: Dict[str, Any]
     drawing_files: List[str]
+    step_files: List[str]
     delivery_requirements: str
     quotation_deadline: str
     closing: str
@@ -60,11 +61,12 @@ class RFQResponse(BaseModel):
                     "material_details": {...},
                     "requirements": {...},
                     "drawing_files": ["drawing1.pdf"],
+                    "step_files": ["model1.step"],
                     "delivery_requirements": "...",
                     "quotation_deadline": "February 15, 2024",
                     "closing": "Please provide your quotation..."
                 },
-                "attachments": ["drawing1.pdf"],
+                "attachments": ["drawing1.pdf", "model1.step"],
                 "status": "draft"
             }
         }

@@ -30,6 +30,7 @@ class TestPRsAPI:
         assert "material" in pr
         assert "specs" in pr
         assert "drawing_files" in pr
+        assert "step_files" in pr
         assert "quantities" in pr
         assert "unit" in pr
         assert "status" in pr
@@ -45,7 +46,7 @@ class TestPRsAPI:
         # Validate all required fields are present
         for pr in data["prs"]:
             required_fields = [
-                "pr_id", "material", "specs", "drawing_files",
+                "pr_id", "material", "specs", "drawing_files", "step_files",
                 "quantities", "unit", "status", "created_date"
             ]
             for field in required_fields:
@@ -206,6 +207,7 @@ class TestRFQsAPI:
                 assert "material_details" in body
                 assert "requirements" in body
                 assert "drawing_files" in body
+                assert "step_files" in body
                 assert "quotation_deadline" in body
                 assert "closing" in body
     

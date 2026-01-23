@@ -23,6 +23,7 @@ class PRService:
             },
             "specifications": pr.specs,
             "drawing_files": pr.drawing_files,
+            "step_files": pr.step_files,
             "quantities": {
                 "amount": pr.quantities,
                 "unit": pr.unit,
@@ -51,6 +52,11 @@ class PRService:
     def extract_drawing_files(pr: PurchaseRequisition) -> List[str]:
         """Extract drawing file references from PR."""
         return pr.drawing_files.copy()
+    
+    @staticmethod
+    def extract_step_files(pr: PurchaseRequisition) -> List[str]:
+        """Extract step file references from PR."""
+        return pr.step_files.copy()
     
     @staticmethod
     def extract_quantities(pr: PurchaseRequisition) -> Dict[str, Any]:

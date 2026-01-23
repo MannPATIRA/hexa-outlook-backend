@@ -81,6 +81,7 @@ Returns all open PRs from the ERP system.
       "material": "MAT-12345",
       "specs": {...},
       "drawing_files": ["drawing1.pdf"],
+      "step_files": ["model1.step", "assembly.step"],
       "quantities": 100,
       "unit": "pcs",
       "description": "...",
@@ -155,11 +156,12 @@ Generates RFQ content for selected suppliers.
         "material_details": {...},
         "requirements": {...},
         "drawing_files": ["drawing1.pdf"],
+        "step_files": ["model1.step"],
         "delivery_requirements": "...",
         "quotation_deadline": "February 15, 2024",
         "closing": "Please provide your quotation by..."
       },
-      "attachments": ["drawing1.pdf"],
+      "attachments": ["drawing1.pdf", "model1.step"],
       "status": "draft"
     }
   ]
@@ -197,6 +199,7 @@ Finalizes an RFQ with user-edited content.
 - `material`: Material code
 - `specs`: Technical specifications (dict)
 - `drawing_files`: List of drawing file references
+- `step_files`: List of STEP file references (3D CAD models)
 - `quantities`: Quantity required
 - `unit`: Unit of measurement
 - `description`: Additional description
@@ -216,7 +219,8 @@ Finalizes an RFQ with user-edited content.
 - `pr_id`: Related purchase requisition
 - `subject`: Email subject line
 - `body`: Email body content (structured JSON)
-- `attachments`: List of drawing files to attach
+  - Contains `drawing_files` and `step_files` fields
+- `attachments`: List of all files to attach (drawing files + step files)
 - `status`: Status (draft, finalized, sent)
 
 ## MockERP

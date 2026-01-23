@@ -28,6 +28,7 @@ async def get_open_prs():
                 material=pr.material,
                 specs=pr.specs,
                 drawing_files=pr.drawing_files,
+                step_files=pr.step_files,
                 quantities=pr.quantities,
                 unit=pr.unit,
                 description=pr.description,

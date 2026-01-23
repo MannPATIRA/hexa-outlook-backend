@@ -61,11 +61,16 @@ class RFQService:
                     "weight": pr_decomposed["requirements"].get("weight", ""),
                 },
                 "drawing_files": pr.drawing_files,
+                "step_files": pr.step_files,
                 "delivery_requirements": "Please provide delivery timeline and terms",
                 "quotation_deadline": deadline_str,
                 "closing": f"Please provide your quotation by {deadline_str}. We look forward to your response.",
                 "contact_info": "For any questions, please contact our procurement team.",
             }
+            
+            # Combine drawing_files and step_files for attachments
+            all_attachments = pr.drawing_files.copy()
+            all_attachments.extend(pr.step_files)
             
             rfq = RFQ(
                 rfq_id=rfq_id,
@@ -73,7 +78,7 @@ class RFQService:
                 pr_id=pr.pr_id,
                 subject=subject,
                 body=body,
-                attachments=pr.drawing_files.copy(),
+                attachments=all_attachments,
                 status="draft",
                 created_date=datetime.now()
             )

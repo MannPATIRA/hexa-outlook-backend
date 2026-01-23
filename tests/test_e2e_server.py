@@ -133,7 +133,7 @@ class TestE2EPurchaseRequisitions:
         # Verify structure of first PR
         pr = data["prs"][0]
         required_fields = [
-            "pr_id", "material", "specs", "drawing_files",
+            "pr_id", "material", "specs", "drawing_files", "step_files",
             "quantities", "unit", "status", "created_date"
         ]
         for field in required_fields:
@@ -313,6 +313,7 @@ class TestE2ERFQs:
                 assert "material_details" in body
                 assert "requirements" in body
                 assert "drawing_files" in body
+                assert "step_files" in body
                 assert "quotation_deadline" in body
                 assert "closing" in body
     

@@ -16,6 +16,7 @@ class TestPurchaseRequisition:
             material="MAT-TEST",
             specs={"type": "test", "grade": "A"},
             drawing_files=["test.pdf"],
+            step_files=["model.step"],
             quantities=50,
             unit="pcs",
             description="Test PR",
@@ -28,6 +29,7 @@ class TestPurchaseRequisition:
         assert pr.unit == "pcs"
         assert pr.status == "open"
         assert len(pr.drawing_files) == 1
+        assert len(pr.step_files) == 1
         assert isinstance(pr.created_date, datetime)
     
     def test_pr_to_dict(self):
@@ -45,6 +47,8 @@ class TestPurchaseRequisition:
         assert pr_dict["pr_id"] == "PR-TEST-002"
         assert pr_dict["material"] == "MAT-TEST-2"
         assert pr_dict["quantities"] == 100
+        assert "step_files" in pr_dict
+        assert isinstance(pr_dict["step_files"], list)
         assert "created_date" in pr_dict
         assert isinstance(pr_dict["created_date"], str)  # ISO format string
 

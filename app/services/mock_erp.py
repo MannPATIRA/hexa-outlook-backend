@@ -31,6 +31,7 @@ class MockERP:
                     "weight": "2.5 kg"
                 },
                 drawing_files=["drawing_PR001_main.pdf", "drawing_PR001_detail.dwg"],
+                step_files=["model_PR001.step", "assembly_PR001.step"],
                 quantities=100,
                 unit="pcs",
                 description="Steel bracket for assembly line",
@@ -49,6 +50,7 @@ class MockERP:
                     "weight": "1.8 kg"
                 },
                 drawing_files=["drawing_PR002_housing.pdf"],
+                step_files=["model_PR002.step"],
                 quantities=50,
                 unit="pcs",
                 description="Aluminum housing for electronic enclosure",
@@ -67,6 +69,7 @@ class MockERP:
                     "weight": "0.3 kg"
                 },
                 drawing_files=["drawing_PR003_plastic.pdf", "drawing_PR003_mold.dwg"],
+                step_files=["model_PR003.step", "mold_PR003.step"],
                 quantities=200,
                 unit="pcs",
                 description="Plastic cover for control panel",
