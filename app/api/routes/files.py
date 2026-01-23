@@ -123,6 +123,13 @@ async def get_file(filename: str):
         original_filename = filename
         filename = unquote(filename)
         
+        # Explicitly reject "health" as a filename (should be handled by /health route)
+        if filename == "health":
+            raise HTTPException(
+                status_code=404,
+                detail="Use /api/files/health endpoint for health check"
+            )
+        
         if original_filename != filename:
             logger.info(f"Decoded filename: '{original_filename}' -> '{filename}'")
         
