@@ -15,6 +15,10 @@ router = APIRouter()
 # Initialize the auto-reply service
 auto_reply_service = AutoReplyService()
 
+# Diagnostic: Store last few requests for debugging
+_request_history = []
+_MAX_HISTORY = 10
+
 
 # ============================================================================
 # Request/Response Schemas
@@ -230,11 +234,36 @@ async def schedule_auto_reply(request: AutoReplyRequest):
     
     # #region agent log
     import json
+    from datetime import datetime
     try:
         with open('/Users/ishaanmakkar/Documents/hexa-outlook-backend/.cursor/debug.log', 'a') as f:
             f.write(json.dumps({"id":f"log_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"demo.py:229","message":"API endpoint received schedule-reply request","data":{"supplier_id":request.supplier_id,"supplier_name":request.supplier_name,"supplier_id_type":str(type(request.supplier_id)),"supplier_name_type":str(type(request.supplier_name)),"supplier_name_is_none":request.supplier_name is None,"supplier_name_is_empty":request.supplier_name == "" if request.supplier_name else None},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
     except: pass
     # #endregion
+    
+    # Store request in history for diagnostics
+    _request_history.append({
+        "timestamp": datetime.now().isoformat(),
+        "supplier_id": request.supplier_id,
+        "supplier_name": request.supplier_name,
+        "to_email": request.to_email,
+        "material": request.material,
+        "reply_type": reply_type
+    })
+    if len(_request_history) > _MAX_HISTORY:
+        _request_history.pop(0)
+    
+    # Fallback: If supplier_name is not provided but supplier_id is, look it up
+    supplier_name = request.supplier_name
+    if not supplier_name and request.supplier_id:
+        try:
+            from .rfqs import mock_erp
+            supplier = mock_erp.get_supplier_by_id(request.supplier_id)
+            if supplier:
+                supplier_name = supplier.name
+                print(f"🔍 DEBUG: Looked up supplier_name from supplier_id: '{supplier_name}'")
+        except Exception as e:
+            print(f"🔍 DEBUG: Failed to lookup supplier_name: {e}")
     
     result = auto_reply_service.schedule_reply(
         to_email=request.to_email,
@@ -245,7 +274,7 @@ async def schedule_auto_reply(request: AutoReplyRequest):
         delay_seconds=request.delay_seconds,
         quantity=request.quantity,
         supplier_id=request.supplier_id,
-        supplier_name=request.supplier_name
+        supplier_name=supplier_name  # Use looked-up value if original was None
     )
     
     if not result.get("success"):
@@ -358,6 +387,21 @@ async def debug_supplier_name():
         "sender_email": auto_reply_service.sender_email if auto_reply_service.is_configured() else None,
         "sender_name": auto_reply_service.sender_name,
         "message": "This is the fallback name that will be used if supplier_name is not provided or is empty"
+    }
+
+
+@router.get("/debug-request-history")
+async def debug_request_history():
+    """
+    Diagnostic endpoint to see the last few schedule-reply requests.
+    
+    This shows what supplier_id and supplier_name values were received from the frontend.
+    Useful for debugging why all emails show the same supplier name.
+    """
+    return {
+        "total_requests": len(_request_history),
+        "requests": _request_history,
+        "message": "This shows the last few requests received. Check if supplier_name is being passed correctly."
     }
 
 
