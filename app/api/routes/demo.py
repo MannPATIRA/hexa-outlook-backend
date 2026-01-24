@@ -228,16 +228,16 @@ async def schedule_auto_reply(request: AutoReplyRequest):
     
     # Log request for debugging (both logging and print for visibility)
     logger = logging.getLogger(__name__)
-    logger.info(f"Received schedule-reply request - supplier_id: {request.supplier_id}, supplier_name: {request.supplier_name}")
+    logger.info(f"Received schedule-reply request - supplier_id: {request.supplier_id}, supplier_name: {request.supplier_name}, subject: {request.original_subject}")
     
     # Print for immediate visibility in console/logs
-    print(f"🔍 DEBUG: API received schedule-reply - supplier_id: {request.supplier_id}, supplier_name: '{request.supplier_name}'")
+    print(f"🔍 DEBUG: API received schedule-reply - supplier_id: {request.supplier_id}, supplier_name: '{request.supplier_name}', subject: '{request.original_subject}'")
     
     # #region agent log
     import json
     try:
         with open('/Users/ishaanmakkar/Documents/hexa-outlook-backend/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({"id":f"log_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"demo.py:229","message":"API endpoint received schedule-reply request","data":{"supplier_id":request.supplier_id,"supplier_name":request.supplier_name,"supplier_id_type":str(type(request.supplier_id)),"supplier_name_type":str(type(request.supplier_name)),"supplier_name_is_none":request.supplier_name is None,"supplier_name_is_empty":request.supplier_name == "" if request.supplier_name else None},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
+            f.write(json.dumps({"id":f"log_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"demo.py:229","message":"API endpoint received schedule-reply request","data":{"supplier_id":request.supplier_id,"supplier_name":request.supplier_name,"supplier_id_type":str(type(request.supplier_id)),"supplier_name_type":str(type(request.supplier_name)),"supplier_name_is_none":request.supplier_name is None,"supplier_name_is_empty":request.supplier_name == "" if request.supplier_name else None,"subject":request.original_subject},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
     except: pass
     # #endregion
     
@@ -248,7 +248,8 @@ async def schedule_auto_reply(request: AutoReplyRequest):
         "supplier_name": request.supplier_name,
         "to_email": request.to_email,
         "material": request.material,
-        "reply_type": reply_type
+        "reply_type": reply_type,
+        "subject": request.original_subject
     })
     if len(_request_history) > _MAX_HISTORY:
         _request_history.pop(0)
@@ -256,18 +257,50 @@ async def schedule_auto_reply(request: AutoReplyRequest):
     # ALWAYS look up supplier_name from database if supplier_id is provided
     # This ensures we use the correct name even if frontend sends wrong/empty value
     supplier_name = request.supplier_name
-    if request.supplier_id:
+    supplier_id = request.supplier_id
+    
+    if supplier_id:
         try:
             from .rfqs import mock_erp
-            supplier = mock_erp.get_supplier_by_id(request.supplier_id)
+            supplier = mock_erp.get_supplier_by_id(supplier_id)
             if supplier:
                 # Always use database value - it's the source of truth
                 supplier_name = supplier.name
                 print(f"🔍 DEBUG: Using supplier_name from database: '{supplier_name}' (frontend sent: '{request.supplier_name}')")
             else:
-                print(f"🔍 DEBUG: Supplier ID {request.supplier_id} not found in database, using frontend value: '{supplier_name}'")
+                print(f"🔍 DEBUG: Supplier ID {supplier_id} not found in database, using frontend value: '{supplier_name}'")
         except Exception as e:
             print(f"🔍 DEBUG: Failed to lookup supplier_name: {e}, using frontend value: '{supplier_name}'")
+    
+    # Fallback: If supplier_id is missing, try to find it from RFQ by matching subject
+    if not supplier_id or not supplier_name:
+        try:
+            from .rfqs import mock_erp
+            # Try to find RFQ by subject (RFQ subjects are like "RFQ for MAT-12345 - 100 pcs")
+            # Get all RFQs and match by subject
+            all_rfqs = list(mock_erp._rfqs.values()) if hasattr(mock_erp, '_rfqs') else []
+            matching_rfq = None
+            for rfq in all_rfqs:
+                if rfq.subject == request.original_subject:
+                    matching_rfq = rfq
+                    break
+            
+            if matching_rfq:
+                # Found RFQ by subject, now get supplier
+                if not supplier_id:
+                    supplier_id = matching_rfq.supplier_id
+                    print(f"🔍 DEBUG: Fallback - Found supplier_id '{supplier_id}' by matching RFQ subject")
+                
+                supplier = mock_erp.get_supplier_by_id(matching_rfq.supplier_id)
+                if supplier:
+                    supplier_name = supplier.name
+                    print(f"🔍 DEBUG: Fallback lookup - Found supplier '{supplier_name}' from RFQ subject match")
+                else:
+                    print(f"🔍 DEBUG: Fallback - Found RFQ but supplier {matching_rfq.supplier_id} not found in database")
+            else:
+                print(f"🔍 DEBUG: Fallback - No RFQ found matching subject '{request.original_subject}'")
+        except Exception as e:
+            print(f"🔍 DEBUG: Fallback lookup failed: {e}")
     
     result = auto_reply_service.schedule_reply(
         to_email=request.to_email,
@@ -277,7 +310,7 @@ async def schedule_auto_reply(request: AutoReplyRequest):
         reply_type=reply_type,
         delay_seconds=request.delay_seconds,
         quantity=request.quantity,
-        supplier_id=request.supplier_id,
+        supplier_id=supplier_id,  # Use looked-up value if found in fallback
         supplier_name=supplier_name  # Use looked-up value from database
     )
     
