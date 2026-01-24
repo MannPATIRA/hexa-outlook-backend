@@ -12,6 +12,7 @@ import os
 import threading
 import time
 import random
+import logging
 from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
@@ -231,8 +232,13 @@ Sales Department
         
         reply_id = self._generate_reply_id()
         
-        # Use supplier_name if provided, otherwise fall back to environment variable
-        display_name = supplier_name if supplier_name else self.sender_name
+        # Use supplier_name if provided and not empty, otherwise fall back to environment variable
+        display_name = supplier_name if supplier_name and supplier_name.strip() else self.sender_name
+        
+        # Log for debugging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Schedule reply - supplier_id: {supplier_id}, supplier_name: {supplier_name}")
+        logger.info(f"Using display_name: {display_name} (fallback: {self.sender_name})")
         
         # Generate reply content based on type
         if reply_type == "quote":

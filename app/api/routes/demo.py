@@ -4,6 +4,7 @@ Demo/testing API endpoints for simulating supplier email replies.
 These endpoints allow you to trigger automatic email replies that will
 appear as threaded replies to RFQ emails - perfect for demos and testing.
 """
+import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
@@ -218,6 +219,10 @@ async def schedule_auto_reply(request: AutoReplyRequest):
             detail=f"Invalid reply_type. Must be one of: {valid_types} or 'random'"
         )
     
+    # Log request for debugging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Received schedule-reply request - supplier_id: {request.supplier_id}, supplier_name: {request.supplier_name}")
+    
     result = auto_reply_service.schedule_reply(
         to_email=request.to_email,
         original_subject=request.original_subject,
@@ -272,6 +277,41 @@ async def quick_test_send(to_email: str):
     return {
         "success": True,
         "message": f"Test email will be sent to {to_email} in 1 second",
+        "reply_id": result.get("reply_id")
+    }
+
+
+@router.post("/test-supplier-name")
+async def test_supplier_name(supplier_name: str, to_email: str = "test@example.com"):
+    """
+    Test endpoint to verify supplier name is used correctly in email display.
+    
+    This endpoint allows you to test if a specific supplier name will appear
+    in the email "From" field. Useful for debugging supplier name display issues.
+    """
+    if not auto_reply_service.is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="SMTP not configured. Set DEMO_SUPPLIER_EMAIL and DEMO_SUPPLIER_PASSWORD environment variables."
+        )
+    
+    result = auto_reply_service.schedule_reply(
+        to_email=to_email,
+        original_subject="Test Supplier Name",
+        original_message_id="<test>",
+        material="Test Material",
+        reply_type="quote",
+        delay_seconds=1,
+        quantity=100,
+        supplier_id="SUP-001",
+        supplier_name=supplier_name
+    )
+    
+    return {
+        "success": True,
+        "received_supplier_name": supplier_name,
+        "display_name_used": result.get("supplier_name"),
+        "message": f"Test email will be sent to {to_email} with supplier name: {result.get('supplier_name')}",
         "reply_id": result.get("reply_id")
     }
 
