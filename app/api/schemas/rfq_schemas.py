@@ -115,3 +115,66 @@ class RFQFinalizeResponse(BaseModel):
             }
         }
     )
+
+
+class SentRFQDetail(BaseModel):
+    """Details of a sent RFQ."""
+    
+    rfq_id: str
+    message_id: str  # Outlook internetMessageId
+    to_email: str  # Recipient email (user's email)
+    subject: str  # Email subject
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "rfq_id": "RFQ-001",
+                "message_id": "<abc123@mail.outlook.com>",
+                "to_email": "user@outlook.com",
+                "subject": "RFQ for MAT-12345 - 100 pcs"
+            }
+        }
+    )
+
+
+class RFQMarkSentRequest(BaseModel):
+    """Request schema for marking RFQs as sent."""
+    
+    rfqs: List[SentRFQDetail]
+    schedule_auto_replies: bool = True  # Whether to schedule auto-replies
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "rfqs": [
+                    {
+                        "rfq_id": "RFQ-001",
+                        "message_id": "<abc123@mail.outlook.com>",
+                        "to_email": "user@outlook.com",
+                        "subject": "RFQ for MAT-12345 - 100 pcs"
+                    }
+                ],
+                "schedule_auto_replies": True
+            }
+        }
+    )
+
+
+class RFQMarkSentResponse(BaseModel):
+    """Response schema for marking RFQs as sent."""
+    
+    marked_sent: List[str]  # List of RFQ IDs successfully marked as sent
+    failed: List[str]  # List of RFQ IDs that failed (if any)
+    auto_replies_scheduled: int  # Count of auto-replies scheduled
+    message: str
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "marked_sent": ["RFQ-001", "RFQ-002"],
+                "failed": [],
+                "auto_replies_scheduled": 2,
+                "message": "2 RFQs marked as sent, 2 auto-replies scheduled"
+            }
+        }
+    )

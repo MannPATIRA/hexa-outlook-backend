@@ -3,12 +3,15 @@ import json
 from ...services.mock_erp import MockERP
 from ...services.supplier_service import SupplierService
 from ...services.rfq_service import RFQService
+from ...services.auto_reply_service import AutoReplyService
 from ..schemas.rfq_schemas import (
     RFQGenerateRequest,
     RFQResponse,
     RFQListResponse,
     RFQFinalizeRequest,
-    RFQFinalizeResponse
+    RFQFinalizeResponse,
+    RFQMarkSentRequest,
+    RFQMarkSentResponse
 )
 
 router = APIRouter()
@@ -17,6 +20,7 @@ router = APIRouter()
 mock_erp = MockERP()
 supplier_service = SupplierService(mock_erp)
 rfq_service = RFQService(mock_erp)
+auto_reply_service = AutoReplyService()
 
 
 @router.post("/generate", response_model=RFQListResponse)
@@ -124,4 +128,93 @@ async def finalize_rfq(request: RFQFinalizeRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Error finalizing RFQ: {str(e)}"
+        )
+
+
+@router.post("/mark-sent", response_model=RFQMarkSentResponse)
+async def mark_rfqs_sent(request: RFQMarkSentRequest):
+    """
+    Mark RFQs as sent after they've been successfully sent via Outlook.
+    
+    This endpoint:
+    - Updates RFQ status to "sent" in the backend
+    - Optionally schedules auto-replies for each sent RFQ
+    - Returns confirmation of which RFQs were marked as sent
+    
+    The frontend should call this after successfully sending RFQ emails via Outlook API.
+    """
+    try:
+        marked_sent = []
+        failed = []
+        auto_replies_scheduled = 0
+        
+        for sent_rfq in request.rfqs:
+            try:
+                # Verify RFQ exists
+                rfq = mock_erp.get_rfq_by_id(sent_rfq.rfq_id)
+                if not rfq:
+                    failed.append(sent_rfq.rfq_id)
+                    continue
+                
+                # Update RFQ status to "sent"
+                mock_erp.update_rfq_status(sent_rfq.rfq_id, "sent")
+                marked_sent.append(sent_rfq.rfq_id)
+                
+                # Schedule auto-reply if requested
+                if request.schedule_auto_replies:
+                    # Get supplier info from RFQ
+                    supplier = mock_erp.get_supplier_by_id(rfq.supplier_id)
+                    supplier_id = rfq.supplier_id if rfq.supplier_id else None
+                    supplier_name = supplier.name if supplier else None
+                    
+                    # Get PR to extract material
+                    pr = mock_erp.get_pr_by_id(rfq.pr_id)
+                    material = pr.material if pr else "Unknown Material"
+                    quantity = pr.quantities if pr else 100
+                    
+                    # Schedule auto-reply
+                    if auto_reply_service.is_configured():
+                        result = auto_reply_service.schedule_reply(
+                            to_email=sent_rfq.to_email,
+                            original_subject=sent_rfq.subject,
+                            original_message_id=sent_rfq.message_id,
+                            material=material,
+                            reply_type="random",  # Random reply type for variety
+                            delay_seconds=30,  # 30 second delay
+                            quantity=quantity,
+                            supplier_id=supplier_id,
+                            supplier_name=supplier_name
+                        )
+                        
+                        if result.get("success"):
+                            auto_replies_scheduled += 1
+                    else:
+                        # Auto-reply not configured, but RFQ still marked as sent
+                        pass
+                
+            except Exception as e:
+                # Log error but continue with other RFQs
+                print(f"Error processing RFQ {sent_rfq.rfq_id}: {e}")
+                failed.append(sent_rfq.rfq_id)
+        
+        # Build response message
+        if failed:
+            message = f"{len(marked_sent)} RFQ(s) marked as sent, {len(failed)} failed"
+        else:
+            message = f"{len(marked_sent)} RFQ(s) marked as sent"
+        
+        if request.schedule_auto_replies:
+            message += f", {auto_replies_scheduled} auto-reply(ies) scheduled"
+        
+        return RFQMarkSentResponse(
+            marked_sent=marked_sent,
+            failed=failed,
+            auto_replies_scheduled=auto_replies_scheduled,
+            message=message
+        )
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error marking RFQs as sent: {str(e)}"
         )
