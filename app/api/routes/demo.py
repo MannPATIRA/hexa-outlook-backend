@@ -59,6 +59,8 @@ class AutoReplyResponse(BaseModel):
     to_email: Optional[str] = None
     reply_type: Optional[str] = None
     error: Optional[str] = None
+    supplier_id: Optional[str] = None  # Add for debugging
+    supplier_name: Optional[str] = None  # Add for debugging - shows what display_name was used
 
 
 class TestConnectionResponse(BaseModel):
@@ -219,9 +221,20 @@ async def schedule_auto_reply(request: AutoReplyRequest):
             detail=f"Invalid reply_type. Must be one of: {valid_types} or 'random'"
         )
     
-    # Log request for debugging
+    # Log request for debugging (both logging and print for visibility)
     logger = logging.getLogger(__name__)
     logger.info(f"Received schedule-reply request - supplier_id: {request.supplier_id}, supplier_name: {request.supplier_name}")
+    
+    # Print for immediate visibility in console/logs
+    print(f"🔍 DEBUG: API received schedule-reply - supplier_id: {request.supplier_id}, supplier_name: '{request.supplier_name}'")
+    
+    # #region agent log
+    import json
+    try:
+        with open('/Users/ishaanmakkar/Documents/hexa-outlook-backend/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"id":f"log_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"demo.py:229","message":"API endpoint received schedule-reply request","data":{"supplier_id":request.supplier_id,"supplier_name":request.supplier_name,"supplier_id_type":str(type(request.supplier_id)),"supplier_name_type":str(type(request.supplier_name)),"supplier_name_is_none":request.supplier_name is None,"supplier_name_is_empty":request.supplier_name == "" if request.supplier_name else None},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
+    except: pass
+    # #endregion
     
     result = auto_reply_service.schedule_reply(
         to_email=request.to_email,
@@ -241,12 +254,17 @@ async def schedule_auto_reply(request: AutoReplyRequest):
             detail=result.get("error", "Failed to schedule reply")
         )
     
+    # Add debug info to response
+    print(f"🔍 DEBUG: Response will use display_name: '{result.get('supplier_name')}'")
+    
     return AutoReplyResponse(
         success=True,
         reply_id=result.get("reply_id"),
         message=result.get("message", "Reply scheduled"),
         to_email=result.get("to_email"),
-        reply_type=reply_type
+        reply_type=reply_type,
+        supplier_id=result.get("supplier_id"),  # Add for debugging
+        supplier_name=result.get("supplier_name")  # Add for debugging - shows display_name that will be used
     )
 
 
@@ -288,12 +306,17 @@ async def test_supplier_name(supplier_name: str, to_email: str = "test@example.c
     
     This endpoint allows you to test if a specific supplier name will appear
     in the email "From" field. Useful for debugging supplier name display issues.
+    
+    Example:
+    POST /api/demo/test-supplier-name?supplier_name=XYZ%20Metalworks&to_email=your@email.com
     """
     if not auto_reply_service.is_configured():
         raise HTTPException(
             status_code=503,
             detail="SMTP not configured. Set DEMO_SUPPLIER_EMAIL and DEMO_SUPPLIER_PASSWORD environment variables."
         )
+    
+    print(f"🔍 DEBUG: Test endpoint called with supplier_name: '{supplier_name}'")
     
     result = auto_reply_service.schedule_reply(
         to_email=to_email,
@@ -311,8 +334,30 @@ async def test_supplier_name(supplier_name: str, to_email: str = "test@example.c
         "success": True,
         "received_supplier_name": supplier_name,
         "display_name_used": result.get("supplier_name"),
+        "fallback_name": auto_reply_service.sender_name,
         "message": f"Test email will be sent to {to_email} with supplier name: {result.get('supplier_name')}",
-        "reply_id": result.get("reply_id")
+        "reply_id": result.get("reply_id"),
+        "debug": {
+            "received": supplier_name,
+            "used": result.get("supplier_name"),
+            "fallback": auto_reply_service.sender_name,
+            "will_use_fallback": not (supplier_name and supplier_name.strip())
+        }
+    }
+
+
+@router.get("/debug-supplier-name")
+async def debug_supplier_name():
+    """
+    Debug endpoint to check current supplier name configuration.
+    
+    Returns the current fallback supplier name and helps diagnose configuration issues.
+    """
+    return {
+        "configured": auto_reply_service.is_configured(),
+        "sender_email": auto_reply_service.sender_email if auto_reply_service.is_configured() else None,
+        "sender_name": auto_reply_service.sender_name,
+        "message": "This is the fallback name that will be used if supplier_name is not provided or is empty"
     }
 
 

@@ -232,13 +232,32 @@ Sales Department
         
         reply_id = self._generate_reply_id()
         
+        # #region agent log
+        import json
+        try:
+            with open('/Users/ishaanmakkar/Documents/hexa-outlook-backend/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"id":f"log_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auto_reply_service.py:233","message":"schedule_reply method entry","data":{"supplier_id":supplier_id,"supplier_name":supplier_name,"supplier_id_type":str(type(supplier_id)),"supplier_name_type":str(type(supplier_name)),"supplier_name_is_none":supplier_name is None,"supplier_name_is_empty":supplier_name == "" if supplier_name else None,"supplier_name_stripped":supplier_name.strip() if supplier_name else None,"fallback_name":self.sender_name},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}) + '\n')
+        except: pass
+        # #endregion
+        
         # Use supplier_name if provided and not empty, otherwise fall back to environment variable
         display_name = supplier_name if supplier_name and supplier_name.strip() else self.sender_name
         
-        # Log for debugging
+        # #region agent log
+        try:
+            with open('/Users/ishaanmakkar/Documents/hexa-outlook-backend/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"id":f"log_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auto_reply_service.py:236","message":"display_name calculated","data":{"supplier_name_input":supplier_name,"display_name_result":display_name,"used_fallback":display_name == self.sender_name,"condition_supplier_name_truthy":bool(supplier_name),"condition_supplier_name_strip":bool(supplier_name and supplier_name.strip()) if supplier_name else False},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}) + '\n')
+        except: pass
+        # #endregion
+        
+        # Log for debugging (both logging and print for visibility)
         logger = logging.getLogger(__name__)
         logger.info(f"Schedule reply - supplier_id: {supplier_id}, supplier_name: {supplier_name}")
         logger.info(f"Using display_name: {display_name} (fallback: {self.sender_name})")
+        
+        # Print for immediate visibility in console/logs
+        print(f"🔍 DEBUG: Schedule reply received - supplier_id: {supplier_id}, supplier_name: '{supplier_name}'")
+        print(f"🔍 DEBUG: Using display_name: '{display_name}' (fallback was: '{self.sender_name}')")
         
         # Generate reply content based on type
         if reply_type == "quote":
@@ -258,6 +277,13 @@ Sales Department
         
         # Start a background thread to send after delay
         def send_delayed():
+            # #region agent log
+            import json
+            try:
+                with open('/Users/ishaanmakkar/Documents/hexa-outlook-backend/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"id":f"log_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auto_reply_service.py:254","message":"send_delayed thread entry - before _send_email call","data":{"display_name_passed":display_name,"display_name_type":str(type(display_name))},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}) + '\n')
+            except: pass
+            # #endregion
             time.sleep(delay_seconds)
             success = self._send_email(
                 to_email=to_email,
@@ -295,12 +321,37 @@ Sales Department
         Returns True if successful, False otherwise.
         """
         try:
+            # #region agent log
+            import json
+            try:
+                with open('/Users/ishaanmakkar/Documents/hexa-outlook-backend/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"id":f"log_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auto_reply_service.py:302","message":"_send_email method entry","data":{"display_name_received":display_name,"display_name_type":str(type(display_name)),"display_name_is_none":display_name is None,"display_name_is_empty":display_name == "" if display_name else None,"fallback_sender_name":self.sender_name},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}) + '\n')
+            except: pass
+            # #endregion
+            
             # Use provided display_name or fall back to self.sender_name
             sender_display_name = display_name if display_name else self.sender_name
+            
+            # #region agent log
+            try:
+                with open('/Users/ishaanmakkar/Documents/hexa-outlook-backend/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"id":f"log_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auto_reply_service.py:305","message":"sender_display_name calculated in _send_email","data":{"display_name_input":display_name,"sender_display_name_result":sender_display_name,"used_fallback":sender_display_name == self.sender_name,"from_field_value":f"{sender_display_name} <{self.sender_email}>"},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}) + '\n')
+            except: pass
+            # #endregion
+            
+            # Debug: Print what will be used in From field
+            print(f"🔍 DEBUG: Sending email with From: '{sender_display_name} <{self.sender_email}>'")
             
             # Create message
             msg = MIMEMultipart("alternative")
             msg["From"] = f"{sender_display_name} <{self.sender_email}>"
+            
+            # #region agent log
+            try:
+                with open('/Users/ishaanmakkar/Documents/hexa-outlook-backend/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"id":f"log_{int(__import__('time').time()*1000)}","timestamp":int(__import__('time').time()*1000),"location":"auto_reply_service.py:310","message":"Email From header set","data":{"from_header_value":msg["From"],"sender_display_name":sender_display_name,"sender_email":self.sender_email},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}) + '\n')
+            except: pass
+            # #endregion
             msg["To"] = to_email
             msg["Subject"] = subject
             

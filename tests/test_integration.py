@@ -182,6 +182,12 @@ class TestCompleteWorkflow:
                     assert material_details["quantity"] == pr["quantities"]
                     assert material_details["unit"] == pr["unit"]
                     
-                    # Verify drawing files are included
+                    # Verify drawing files and step files are included
                     assert "drawing_files" in body
                     assert isinstance(body["drawing_files"], list)
+                    assert "step_files" in body
+                    assert isinstance(body["step_files"], list)
+                    
+                    # Verify attachments include both drawing and step files
+                    assert "attachments" in rfq
+                    assert isinstance(rfq["attachments"], list)
