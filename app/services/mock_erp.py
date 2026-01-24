@@ -86,7 +86,7 @@ class MockERP:
             Supplier(
                 supplier_id="SUP-001",
                 name="ABC Manufacturing",
-                email="supplier-hexa@outlook.com",
+                email="mannpatira@hotmail.com",
                 capabilities=["Steel Components", "Machining", "Welding", "SS304"],
                 standard_for_materials=["MAT-12345", "MAT-99999"],
                 contact_person="John Smith",
@@ -95,7 +95,7 @@ class MockERP:
             Supplier(
                 supplier_id="SUP-002",
                 name="XYZ Metalworks",
-                email="supplier-hexa@outlook.com",
+                email="mannpatira@hotmail.com",
                 capabilities=["Steel Components", "Aluminum Components", "SS304", "6061-T6"],
                 standard_for_materials=["MAT-12345", "MAT-67890"],
                 contact_person="Sarah Johnson",
@@ -104,7 +104,7 @@ class MockERP:
             Supplier(
                 supplier_id="SUP-003",
                 name="Precision Plastics Inc",
-                email="supplier-hexa@outlook.com",
+                email="mannpatira@hotmail.com",
                 capabilities=["Plastic Injection Molding", "ABS", "Polycarbonate"],
                 standard_for_materials=["MAT-11111"],
                 contact_person="Mike Davis",
@@ -113,7 +113,7 @@ class MockERP:
             Supplier(
                 supplier_id="SUP-004",
                 name="Global Components Ltd",
-                email="supplier-hexa@outlook.com",
+                email="mannpatira@hotmail.com",
                 capabilities=["Steel Components", "Aluminum Components", "Plastic Molding"],
                 standard_for_materials=[],
                 contact_person="Lisa Chen",
@@ -122,7 +122,7 @@ class MockERP:
             Supplier(
                 supplier_id="SUP-005",
                 name="SteelWorks Manufacturing",
-                email="supplier-hexa@outlook.com",
+                email="mannpatira@hotmail.com",
                 capabilities=["Steel Components", "Machining", "SS304", "Welding"],
                 standard_for_materials=["MAT-12345"],
                 contact_person="Robert Taylor",
@@ -131,7 +131,7 @@ class MockERP:
             Supplier(
                 supplier_id="SUP-006",
                 name="Precision Steel Corp",
-                email="supplier-hexa@outlook.com",
+                email="mannpatira@hotmail.com",
                 capabilities=["Steel Components", "SS304", "Precision Machining"],
                 standard_for_materials=["MAT-12345"],
                 contact_person="Emily Wilson",
@@ -140,7 +140,7 @@ class MockERP:
             Supplier(
                 supplier_id="SUP-007",
                 name="Industrial Steel Solutions",
-                email="supplier-hexa@outlook.com",
+                email="mannpatira@hotmail.com",
                 capabilities=["Steel Components", "SS304", "Machining", "Steel Component"],
                 standard_for_materials=[],
                 contact_person="David Brown",
