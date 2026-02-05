@@ -26,12 +26,17 @@ load_dotenv(dotenv_path=env_path)
 
 @dataclass
 class ScheduledReply:
-    """Tracks a scheduled reply."""
+    """Tracks a scheduled reply with detailed delivery status."""
     reply_id: str
     to_email: str
     subject: str
     scheduled_time: datetime
-    status: str = "pending"
+    status: str = "pending"  # pending, sending, sent, failed
+    send_started_time: Optional[datetime] = None
+    send_completed_time: Optional[datetime] = None
+    error_message: Optional[str] = None
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
 
 
 class AutoReplyService:
@@ -267,15 +272,17 @@ Sales Department
         else:
             body = self.generate_clarification_reply(material, "procurement", display_name)
         
-        # Track the scheduled reply
+        # Track the scheduled reply with detailed info
         self._scheduled_replies[reply_id] = ScheduledReply(
             reply_id=reply_id,
             to_email=to_email,
             subject=f"RE: {original_subject}",
-            scheduled_time=datetime.now()
+            scheduled_time=datetime.now(),
+            supplier_id=supplier_id,
+            supplier_name=display_name
         )
         
-        # Start a background thread to send after delay
+        # Start a background thread to send after delay with retry logic
         def send_delayed():
             # #region agent log
             import json
@@ -285,16 +292,53 @@ Sales Department
             except: pass
             # #endregion
             time.sleep(delay_seconds)
-            success = self._send_email(
-                to_email=to_email,
-                subject=f"RE: {original_subject}",
-                body=body,
-                original_message_id=original_message_id,
-                display_name=display_name
-            )
-            self._scheduled_replies[reply_id].status = "sent" if success else "failed"
+            
+            # Update status to "sending" before attempting
+            self._scheduled_replies[reply_id].status = "sending"
+            self._scheduled_replies[reply_id].send_started_time = datetime.now()
+            
+            # Retry logic with exponential backoff
+            max_retries = 3
+            base_delay = 2  # Start with 2 second delay
+            success = False
+            error_msg = None
+            
+            for attempt in range(max_retries):
+                if attempt > 0:
+                    # Exponential backoff: 2s, 4s, 8s
+                    retry_delay = base_delay * (2 ** (attempt - 1))
+                    print(f"🔄 Retry {attempt}/{max_retries - 1} for {reply_id} in {retry_delay}s...")
+                    time.sleep(retry_delay)
+                
+                success, error_msg = self._send_email_with_error(
+                    to_email=to_email,
+                    subject=f"RE: {original_subject}",
+                    body=body,
+                    original_message_id=original_message_id,
+                    display_name=display_name
+                )
+                
+                if success:
+                    break
+                
+                # Don't retry for authentication errors
+                if error_msg and "Authentication" in error_msg:
+                    print(f"⛔ Not retrying {reply_id} - authentication error")
+                    break
+            
+            # Update final status with completion time
+            self._scheduled_replies[reply_id].send_completed_time = datetime.now()
+            if success:
+                self._scheduled_replies[reply_id].status = "sent"
+                print(f"📧 Email {reply_id} delivered successfully to {to_email}")
+            else:
+                self._scheduled_replies[reply_id].status = "failed"
+                self._scheduled_replies[reply_id].error_message = error_msg
+                print(f"❌ Email {reply_id} failed to deliver after {max_retries} attempts: {error_msg}")
         
-        thread = threading.Thread(target=send_delayed, daemon=True)
+        # Use daemon=False to ensure email threads complete even if main process tries to exit
+        # This prevents emails from being lost when the server idles/restarts
+        thread = threading.Thread(target=send_delayed, daemon=False)
         thread.start()
         
         return {
@@ -416,18 +460,121 @@ Sales Department
                 print(f"❌ Failed to send email: {e}")
             return False
     
+    def _send_email_with_error(
+        self,
+        to_email: str,
+        subject: str,
+        body: str,
+        original_message_id: str,
+        display_name: Optional[str] = None
+    ) -> tuple:
+        """
+        Send the actual email via SMTP and return detailed error info.
+        
+        Returns tuple of (success: bool, error_message: Optional[str])
+        """
+        try:
+            # Use provided display_name or fall back to self.sender_name
+            sender_display_name = display_name if display_name else self.sender_name
+            
+            # Debug: Print what will be used in From field
+            print(f"🔍 DEBUG: Sending email with From: '{sender_display_name} <{self.sender_email}>'")
+            
+            # Create message
+            msg = MIMEMultipart("alternative")
+            msg["From"] = f"{sender_display_name} <{self.sender_email}>"
+            msg["To"] = to_email
+            msg["Subject"] = subject
+            
+            # These headers make the email thread as a reply!
+            if original_message_id:
+                msg["In-Reply-To"] = original_message_id
+                msg["References"] = original_message_id
+            
+            # Add plain text body
+            msg.attach(MIMEText(body, "plain"))
+            
+            # Also add HTML version for better formatting
+            html_body = f"<pre style='font-family: Arial, sans-serif; white-space: pre-wrap;'>{body}</pre>"
+            msg.attach(MIMEText(html_body, "html"))
+            
+            # Connect and send
+            context = ssl.create_default_context()
+            
+            # Try port 587 (TLS/STARTTLS)
+            try:
+                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=10) as server:
+                    server.starttls(context=context)
+                    server.login(self.sender_email, self.sender_password)
+                    server.send_message(msg)
+                print(f"✅ Email sent successfully to {to_email}")
+                return (True, None)
+            except (OSError, ConnectionError) as e:
+                error_msg = str(e)
+                if "Network is unreachable" in error_msg or "101" in error_msg:
+                    print(f"⚠️  Port 587 blocked, trying SSL port 465...")
+                    try:
+                        with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port_ssl, timeout=10) as server:
+                            server.login(self.sender_email, self.sender_password)
+                            server.send_message(msg)
+                        print(f"✅ Email sent successfully to {to_email} (via SSL)")
+                        return (True, None)
+                    except Exception as ssl_error:
+                        error = f"Both SMTP ports blocked: {ssl_error}"
+                        print(f"❌ {error}")
+                        return (False, error)
+                else:
+                    raise
+            
+        except smtplib.SMTPAuthenticationError as e:
+            error = f"SMTP Authentication failed: {e}"
+            print(f"❌ {error}")
+            return (False, error)
+        except Exception as e:
+            error_str = str(e)
+            if "Network is unreachable" in error_str or "101" in error_str:
+                error = "SMTP connection blocked by hosting provider"
+            else:
+                error = f"Failed to send email: {e}"
+            print(f"❌ {error}")
+            return (False, error)
+    
     def get_scheduled_replies(self) -> list:
-        """Get all scheduled/sent replies."""
+        """Get all scheduled/sent replies with detailed delivery status."""
         return [
             {
                 "reply_id": r.reply_id,
                 "to_email": r.to_email,
                 "subject": r.subject,
                 "scheduled_time": r.scheduled_time.isoformat(),
-                "status": r.status
+                "status": r.status,
+                "send_started_time": r.send_started_time.isoformat() if r.send_started_time else None,
+                "send_completed_time": r.send_completed_time.isoformat() if r.send_completed_time else None,
+                "error_message": r.error_message,
+                "supplier_id": r.supplier_id,
+                "supplier_name": r.supplier_name
             }
             for r in self._scheduled_replies.values()
         ]
+    
+    def get_delivery_summary(self) -> dict:
+        """Get a summary of email delivery status for debugging."""
+        replies = list(self._scheduled_replies.values())
+        return {
+            "total": len(replies),
+            "pending": sum(1 for r in replies if r.status == "pending"),
+            "sending": sum(1 for r in replies if r.status == "sending"),
+            "sent": sum(1 for r in replies if r.status == "sent"),
+            "failed": sum(1 for r in replies if r.status == "failed"),
+            "failed_replies": [
+                {
+                    "reply_id": r.reply_id,
+                    "to_email": r.to_email,
+                    "error": r.error_message
+                }
+                for r in replies if r.status == "failed"
+            ]
+        }
     
     def test_connection(self) -> dict:
         """Test SMTP connection without sending an email."""

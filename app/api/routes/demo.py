@@ -78,13 +78,18 @@ class TestConnectionResponse(BaseModel):
 
 
 class ScheduledReplyInfo(BaseModel):
-    """Information about a scheduled reply."""
+    """Information about a scheduled reply with delivery tracking."""
     
     reply_id: str
     to_email: str
     subject: str
     scheduled_time: str
-    status: str
+    status: str  # pending, sending, sent, failed
+    send_started_time: Optional[str] = None
+    send_completed_time: Optional[str] = None
+    error_message: Optional[str] = None
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
 
 
 class DemoStatusResponse(BaseModel):
@@ -173,6 +178,17 @@ async def get_demo_status():
         ],
         message="Demo system is ready!" if configured else "Not configured. Set environment variables."
     )
+
+
+@router.get("/delivery-summary")
+async def get_delivery_summary():
+    """
+    Get a summary of email delivery status.
+    
+    Shows counts of pending, sending, sent, and failed emails.
+    Useful for debugging why some emails may not have been delivered.
+    """
+    return auto_reply_service.get_delivery_summary()
 
 
 @router.get("/test-connection", response_model=TestConnectionResponse)
