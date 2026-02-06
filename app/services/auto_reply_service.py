@@ -56,6 +56,10 @@ class AutoReplyService:
         # Track scheduled replies
         self._scheduled_replies: dict = {}
         self._reply_counter = 0
+        
+        # Track reply type distribution per material for guaranteed distribution
+        # Key: material name, Value: list of reply types already assigned
+        self._material_reply_distribution: dict = {}
     
     @property
     def sender_email(self) -> str:
@@ -85,6 +89,70 @@ class AutoReplyService:
     def _generate_reply_id(self) -> str:
         self._reply_counter += 1
         return f"AUTO-REPLY-{self._reply_counter:03d}"
+    
+    def get_next_reply_type_for_material(self, material: str) -> str:
+        """
+        Get the next reply type for a material with guaranteed distribution.
+        
+        For PR-001 (MAT-12345) and similar materials, ensures exactly:
+        - 3 quotes
+        - 1 engineering clarification
+        - 1 procurement clarification
+        
+        The distribution order is: quote, quote, quote, clarification_engineering, clarification_procurement
+        
+        Args:
+            material: The material code (e.g., "MAT-12345")
+            
+        Returns:
+            The reply type to use for this request
+        """
+        # Guaranteed distribution: 3 quotes, 1 engineering clarification, 1 procurement clarification
+        distribution_order = [
+            "quote",
+            "quote", 
+            "quote",
+            "clarification_engineering",
+            "clarification_procurement"
+        ]
+        
+        # Get or create the list of reply types already assigned for this material
+        if material not in self._material_reply_distribution:
+            self._material_reply_distribution[material] = []
+        
+        assigned = self._material_reply_distribution[material]
+        
+        # Determine which reply type to use next
+        if len(assigned) < len(distribution_order):
+            # Use the next type in the distribution order
+            next_type = distribution_order[len(assigned)]
+        else:
+            # If we've assigned all 5, cycle back (or default to quote)
+            # This handles edge cases where more than 5 replies are requested
+            cycle_index = len(assigned) % len(distribution_order)
+            next_type = distribution_order[cycle_index]
+        
+        # Record this assignment
+        self._material_reply_distribution[material].append(next_type)
+        
+        print(f"🎯 Material {material}: Assigned reply type '{next_type}' (#{len(assigned) + 1} of distribution)")
+        
+        return next_type
+    
+    def reset_material_distribution(self, material: str = None):
+        """
+        Reset the reply type distribution tracking.
+        
+        Args:
+            material: If provided, reset only for this material. Otherwise reset all.
+        """
+        if material:
+            if material in self._material_reply_distribution:
+                del self._material_reply_distribution[material]
+                print(f"🔄 Reset distribution tracking for material: {material}")
+        else:
+            self._material_reply_distribution = {}
+            print("🔄 Reset all material distribution tracking")
     
     def generate_quote_reply(self, material: str, quantity: int = 100, display_name: Optional[str] = None) -> str:
         """Generate a realistic quote email body."""

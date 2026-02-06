@@ -191,6 +191,24 @@ async def get_delivery_summary():
     return auto_reply_service.get_delivery_summary()
 
 
+@router.post("/reset-distribution")
+async def reset_distribution(material: Optional[str] = None):
+    """
+    Reset the reply type distribution tracking.
+    
+    Call this before starting a new demo to ensure the distribution
+    starts fresh (3 quotes, 1 engineering clarification, 1 procurement clarification).
+    
+    Args:
+        material: Optional material code to reset. If not provided, resets all materials.
+    """
+    auto_reply_service.reset_material_distribution(material)
+    return {
+        "success": True,
+        "message": f"Distribution reset for {'material: ' + material if material else 'all materials'}"
+    }
+
+
 @router.get("/test-connection", response_model=TestConnectionResponse)
 async def test_smtp_connection():
     """
@@ -223,16 +241,13 @@ async def schedule_auto_reply(request: AutoReplyRequest):
     - `clarification_engineering`: Generates technical questions
     - `random`: Randomly picks one of the above
     """
-    import random
-    
-    # Handle random reply type
+    # Handle random/auto reply type with guaranteed distribution
     reply_type = request.reply_type
     if reply_type == "random":
-        reply_type = random.choice([
-            "quote", "quote", "quote",  # 60% chance of quote
-            "clarification_procurement",  # 20% chance
-            "clarification_engineering"   # 20% chance
-        ])
+        # Use guaranteed distribution based on material to ensure
+        # exactly 3 quotes + 1 engineering + 1 procurement clarification
+        reply_type = auto_reply_service.get_next_reply_type_for_material(request.material)
+        print(f"🎯 Auto-assigned reply type: {reply_type} for material: {request.material}")
     
     # Validate reply type
     valid_types = ["quote", "clarification_procurement", "clarification_engineering"]
